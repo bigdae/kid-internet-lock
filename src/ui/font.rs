@@ -15,7 +15,7 @@ pub fn create_ui_font(size_pixels: i32, is_bold: bool) -> HFONT {
         lf.lfWeight = if is_bold { 700 } else { 400 };
         lf.lfCharSet = 1; // DEFAULT_CHARSET
 
-        // "Malgun Gothic" (맑은 고딕) for clean Korean and English rendering
+        // "Malgun Gothic" for clean rendering of UI text
         let font_name = "Malgun Gothic";
         for (i, c) in font_name.encode_utf16().enumerate().take(31) {
             lf.lfFaceName[i] = c;

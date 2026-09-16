@@ -103,15 +103,15 @@ impl AppState {
                 (
                     true,
                     StatusType::BlockedManual,
-                    "인터넷 수동 차단 중".to_string(),
-                    "야간 인터넷 지킴이\n상태: 🔴 수동 차단 중\n(수동 제어 모드 활성)".to_string(),
+                    "Internet manually blocked".to_string(),
+                    "Kid Internet Lock\nStatus: 🔴 Manually Blocked\n(Manual control active)".to_string(),
                 )
             } else {
                 (
                     false,
                     StatusType::AllowedManual,
-                    "인터넷 수동 허용 중".to_string(),
-                    "야간 인터넷 지킴이\n상태: 🟢 수동 허용 중\n(수동 제어 모드 활성)".to_string(),
+                    "Internet manually allowed".to_string(),
+                    "Kid Internet Lock\nStatus: 🟢 Manually Allowed\n(Manual control active)".to_string(),
                 )
             }
         } else if let Some(until) = self.temp_allow_until {
@@ -120,9 +120,9 @@ impl AppState {
             (
                 false,
                 StatusType::AllowedTemporary,
-                format!("부모 임시 허용 중 (남은 시간: 약 {}분)", rem_mins),
+                format!("Temporary allow active (about {} min left)", rem_mins),
                 format!(
-                    "야간 인터넷 지킴이\n상태: 🟢 부모 임시 허용 중\n남은 시간: 약 {}분 ({}까지)",
+                    "Kid Internet Lock\nStatus: 🟢 Temporary allow active\nRemaining: about {} min (until {})",
                     rem_mins,
                     until.format("%H:%M")
                 ),
@@ -133,9 +133,9 @@ impl AppState {
                 (
                     true,
                     StatusType::BlockedSchedule,
-                    format!("심야 인터넷 차단 중 ({:02}:{:02} 해제 예정)", self.config.end_hour, self.config.end_minute),
+                    format!("Internet blocked for tonight (unblocks at {:02}:{:02})", self.config.end_hour, self.config.end_minute),
                     format!(
-                        "야간 인터넷 지킴이\n상태: 🔴 심야 인터넷 차단 중\n차단 해제 예정: {:02}:{:02}",
+                        "Kid Internet Lock\nStatus: 🔴 Nightly internet block active\nUnblocks at: {:02}:{:02}",
                         self.config.end_hour, self.config.end_minute
                     ),
                 )
@@ -143,9 +143,9 @@ impl AppState {
                 (
                     false,
                     StatusType::AllowedNormal,
-                    format!("인터넷 정상 허용 중 ({:02}:{:02} 차단 예정)", self.config.start_hour, self.config.start_minute),
+                    format!("Internet allowed (block starts at {:02}:{:02})", self.config.start_hour, self.config.start_minute),
                     format!(
-                        "야간 인터넷 지킴이\n상태: 🟢 인터넷 정상 허용\n차단 시작 예정: {:02}:{:02}",
+                        "Kid Internet Lock\nStatus: 🟢 Internet allowed\nBlock starts at: {:02}:{:02}",
                         self.config.start_hour, self.config.start_minute
                     ),
                 )
@@ -183,8 +183,8 @@ impl AppState {
         }
 
         if self.apply_failed {
-            summary.push_str(" ⚠️ 방화벽 적용 실패");
-            tooltip.push_str("\n⚠️ 방화벽 규칙 적용에 실패했습니다 (보안 정책/권한 확인)");
+            summary.push_str(" ⚠️ Failed to apply firewall rule");
+            tooltip.push_str("\n⚠️ Failed to apply the firewall rule (check security policy/permissions)");
         }
 
         StatusDetail {

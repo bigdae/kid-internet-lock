@@ -94,14 +94,13 @@ flowchart TD
 | `Cargo.toml` | Rust dependencies and package metadata |
 | `run.bat` | Convenience launcher |
 | `build.bat` | Release build script that produces `KidInternetLock.exe` |
-| `KidInternetLock.exe` | Compiled standalone executable (no installation required) |
 
 ---
 
 ## 🚀 Usage
 
 1. **Run**
-   - Double-click `KidInternetLock.exe` (or `run.bat`).
+   - Download `KidInternetLock.exe` from the [Releases page](../../releases/latest) and double-click it (or build it yourself and use `run.bat`).
    - Approve the **UAC (User Account Control)** prompt — administrator rights are required to control Windows Firewall.
    - If the app is already running, a notice appears asking you to check the tray area; duplicates are prevented.
 
@@ -111,22 +110,22 @@ flowchart TD
    - Double-click the icon (or right-click ➔ settings) to authenticate and open settings.
 
 3. **Settings**
-   - Right-click the tray icon ➔ **[관리자 설정 (S)...]** (Admin settings)
+   - Right-click the tray icon ➔ **[Admin Settings (S)...]**
    - Enter the password (default `1q2w3e`) and press Enter.
    - Configure the block window, change the password, and enable/disable auto-start.
 
 4. **Temporary allow**
-   - Right-click the tray icon ➔ **[30분 임시 허용]** or **[1시간 임시 허용]**
+   - Right-click the tray icon ➔ **[Allow 30 Minutes]** or **[Allow 1 Hour]**
    - Authenticate and the internet is temporarily allowed even during the block window.
 
 5. **Exit**
-   - Right-click the tray icon ➔ **[프로그램 종료 (X)]** ➔ enter the admin password.
+   - Right-click the tray icon ➔ **[Exit (X)]** ➔ enter the admin password.
    - On exit, the guard service, watchdog and scheduled task are removed, and the firewall rules are restored.
 
 ### Notes and troubleshooting
 
 - The app enables the Windows Firewall profiles while blocking. If the firewall was off, it is turned back on automatically so the rules take effect. Windows Firewall does not terminate connections that were already established, so an app that is already online may keep working for a short while — close and reopen it to test.
-- If blocking fails (e.g. security policy blocks firewall changes), the tooltip and settings window show **⚠️ 방화벽 적용 실패**, and the app keeps retrying.
+- If blocking fails (e.g. security policy blocks firewall changes), the tooltip and settings window show **⚠️ Failed to apply firewall rule**, and the app keeps retrying.
 - To remove the guard components manually from an elevated command prompt:
   ```
   sc delete KidInternetLockGuard

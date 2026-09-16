@@ -76,7 +76,7 @@ unsafe fn update_status_text(ctx: &SettingsContext) {
     unsafe {
         let mut state = ctx.shared_state.lock().unwrap();
         let detail = state.evaluate_and_sync();
-        let text_wide: Vec<u16> = format!("현재 상태: {}\0", detail.summary)
+        let text_wide: Vec<u16> = format!("Current status: {}\0", detail.summary)
             .encode_utf16()
             .collect();
         SetWindowTextW(ctx.label_status, text_wide.as_ptr());
@@ -163,21 +163,21 @@ unsafe extern "system" fn settings_wnd_proc(
 
                         let mut state = ctx.shared_state.lock().unwrap();
                         let result_msg = if !state.config.verify_password(&old_pwd) {
-                            "현재 비밀번호가 일치하지 않습니다."
+                            "The current password is incorrect."
                         } else if new_pwd.is_empty() {
-                            "새 비밀번호를 입력해주세요."
+                            "Please enter a new password."
                         } else if new_pwd != confirm_pwd {
-                            "새 비밀번호 확인이 일치하지 않습니다."
+                            "The new password confirmation does not match."
                         } else {
                             state.config.update_password(&new_pwd);
                             if let Err(e) = state.config.save() {
-                                SetWindowTextW(ctx.label_pwd_msg, format!("저장 실패: {}\0", e).encode_utf16().collect::<Vec<_>>().as_ptr());
+                                SetWindowTextW(ctx.label_pwd_msg, format!("Save failed: {}\0", e).encode_utf16().collect::<Vec<_>>().as_ptr());
                                 return 0;
                             }
                             SetWindowTextW(ctx.edit_old_pwd, [0u16].as_ptr());
                             SetWindowTextW(ctx.edit_new_pwd, [0u16].as_ptr());
                             SetWindowTextW(ctx.edit_confirm_pwd, [0u16].as_ptr());
-                            "비밀번호가 성공적으로 변경되었습니다."
+                            "Password changed successfully."
                         };
 
                         let msg_wide: Vec<u16> = format!("{}\0", result_msg).encode_utf16().collect();
@@ -196,8 +196,8 @@ unsafe extern "system" fn settings_wnd_proc(
                         let em = em_str.parse::<u32>().unwrap_or(99);
 
                         if sh > 23 || eh > 23 || sm > 59 || em > 59 {
-                            let title: Vec<u16> = "입력 오류\0".encode_utf16().collect();
-                            let msg: Vec<u16> = "시간은 00~23시, 분은 00~59분 사이로 입력해주세요.\0"
+                            let title: Vec<u16> = "Input Error\0".encode_utf16().collect();
+                            let msg: Vec<u16> = "Please enter hours between 00 and 23 and minutes between 00 and 59.\0"
                                 .encode_utf16()
                                 .collect();
                             MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
@@ -219,8 +219,8 @@ unsafe extern "system" fn settings_wnd_proc(
                             state.evaluate_and_sync();
                         }
 
-                        let title: Vec<u16> = "설정 저장 완료\0".encode_utf16().collect();
-                        let msg: Vec<u16> = "설정이 성공적으로 저장되었습니다.\0".encode_utf16().collect();
+                        let title: Vec<u16> = "Settings Saved\0".encode_utf16().collect();
+                        let msg: Vec<u16> = "Settings saved successfully.\0".encode_utf16().collect();
                         MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
                         update_status_text(ctx);
                         0
@@ -256,7 +256,7 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         }
 
         let class_name: Vec<u16> = "KidInternetLock_SettingsWnd\0".encode_utf16().collect();
-        let title_wide: Vec<u16> = "야간 인터넷 지킴이 - 관리자 설정\0".encode_utf16().collect();
+        let title_wide: Vec<u16> = "Kid Internet Lock - Admin Settings\0".encode_utf16().collect();
         let hinstance = GetModuleHandleW(null_mut());
 
         let mut wc: WNDCLASSEXW = zeroed();
@@ -309,9 +309,9 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         let btn_class: Vec<u16> = "BUTTON\0".encode_utf16().collect();
 
         // -------------------------------------------------------------
-        // Group 1: 차단 시간 설정
+        // Group 1: Block schedule
         // -------------------------------------------------------------
-        let grp1_title: Vec<u16> = " 🕒 심야 차단 시간대 설정 \0".encode_utf16().collect();
+        let grp1_title: Vec<u16> = " 🕒 Block Schedule \0".encode_utf16().collect();
         CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -327,7 +327,7 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
             null_mut(),
         );
 
-        let lbl_start: Vec<u16> = "차단 시작:\0".encode_utf16().collect();
+        let lbl_start: Vec<u16> = "Block start:\0".encode_utf16().collect();
         CreateWindowExW(0, static_class.as_ptr(), lbl_start.as_ptr(), WS_CHILD | WS_VISIBLE, 36, 40, 70, 20, hwnd, null_mut(), hinstance, null_mut());
 
         let edit_start_h = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_CENTER as u32) | (ES_NUMBER as u32), 110, 38, 40, 24, hwnd, ID_EDIT_START_H as _, hinstance, null_mut());
@@ -335,7 +335,7 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         CreateWindowExW(0, static_class.as_ptr(), colon1.as_ptr(), WS_CHILD | WS_VISIBLE, 155, 40, 10, 20, hwnd, null_mut(), hinstance, null_mut());
         let edit_start_m = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_CENTER as u32) | (ES_NUMBER as u32), 168, 38, 40, 24, hwnd, ID_EDIT_START_M as _, hinstance, null_mut());
 
-        let lbl_end: Vec<u16> = "차단 종료:\0".encode_utf16().collect();
+        let lbl_end: Vec<u16> = "Block end:\0".encode_utf16().collect();
         CreateWindowExW(0, static_class.as_ptr(), lbl_end.as_ptr(), WS_CHILD | WS_VISIBLE, 260, 40, 70, 20, hwnd, null_mut(), hinstance, null_mut());
 
         let edit_end_h = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_CENTER as u32) | (ES_NUMBER as u32), 335, 38, 40, 24, hwnd, ID_EDIT_END_H as _, hinstance, null_mut());
@@ -343,13 +343,13 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         CreateWindowExW(0, static_class.as_ptr(), colon2.as_ptr(), WS_CHILD | WS_VISIBLE, 380, 40, 10, 20, hwnd, null_mut(), hinstance, null_mut());
         let edit_end_m = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_CENTER as u32) | (ES_NUMBER as u32), 393, 38, 40, 24, hwnd, ID_EDIT_END_M as _, hinstance, null_mut());
 
-        let note_text: Vec<u16> = "※ 기본값 00:00 ~ 07:00 / 자정을 넘나드는 시간대(예: 23:30 ~ 06:30)도 지원\0".encode_utf16().collect();
+        let note_text: Vec<u16> = "※ Default 00:00 - 07:00 / Time ranges crossing midnight (e.g. 23:30 - 06:30) are also supported\0".encode_utf16().collect();
         CreateWindowExW(0, static_class.as_ptr(), note_text.as_ptr(), WS_CHILD | WS_VISIBLE, 36, 74, 445, 20, hwnd, null_mut(), hinstance, null_mut());
 
         // -------------------------------------------------------------
-        // Group 2: 임시 허용 & 수동 제어
+        // Group 2: Temporary allow & manual control
         // -------------------------------------------------------------
-        let grp2_title: Vec<u16> = " ⚡ 부모용 임시 허용 및 수동 제어 \0".encode_utf16().collect();
+        let grp2_title: Vec<u16> = " ⚡ Temporary Allow & Manual Control \0".encode_utf16().collect();
         CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -380,22 +380,22 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
             null_mut(),
         );
 
-        let btn_30_txt: Vec<u16> = "30분 임시 허용\0".encode_utf16().collect();
+        let btn_30_txt: Vec<u16> = "Allow 30 Minutes\0".encode_utf16().collect();
         CreateWindowExW(0, btn_class.as_ptr(), btn_30_txt.as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32), 36, 180, 100, 32, hwnd, ID_BTN_TEMP_30 as _, hinstance, null_mut());
 
-        let btn_60_txt: Vec<u16> = "1시간 임시 허용\0".encode_utf16().collect();
+        let btn_60_txt: Vec<u16> = "Allow 1 Hour\0".encode_utf16().collect();
         CreateWindowExW(0, btn_class.as_ptr(), btn_60_txt.as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32), 142, 180, 100, 32, hwnd, ID_BTN_TEMP_60 as _, hinstance, null_mut());
 
-        let btn_cancel_txt: Vec<u16> = "임시 허용 해제\0".encode_utf16().collect();
+        let btn_cancel_txt: Vec<u16> = "Cancel Temporary Allow\0".encode_utf16().collect();
         CreateWindowExW(0, btn_class.as_ptr(), btn_cancel_txt.as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32), 248, 180, 100, 32, hwnd, ID_BTN_TEMP_CANCEL as _, hinstance, null_mut());
 
-        let btn_toggle_txt: Vec<u16> = "즉시 차단/해제 전환\0".encode_utf16().collect();
+        let btn_toggle_txt: Vec<u16> = "Block / Unblock Now\0".encode_utf16().collect();
         CreateWindowExW(0, btn_class.as_ptr(), btn_toggle_txt.as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32), 354, 180, 126, 32, hwnd, ID_BTN_TOGGLE_NOW as _, hinstance, null_mut());
 
         // -------------------------------------------------------------
-        // Group 3: 관리자 비밀번호 변경
+        // Group 3: Change admin password
         // -------------------------------------------------------------
-        let grp3_title: Vec<u16> = " 🔑 관리자 비밀번호 변경 \0".encode_utf16().collect();
+        let grp3_title: Vec<u16> = " 🔑 Change Admin Password \0".encode_utf16().collect();
         CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -411,15 +411,15 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
             null_mut(),
         );
 
-        let lbl_old: Vec<u16> = "현재 비밀번호:\0".encode_utf16().collect();
+        let lbl_old: Vec<u16> = "Current password:\0".encode_utf16().collect();
         CreateWindowExW(0, static_class.as_ptr(), lbl_old.as_ptr(), WS_CHILD | WS_VISIBLE, 36, 275, 110, 20, hwnd, null_mut(), hinstance, null_mut());
         let edit_old_pwd = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_PASSWORD as u32) | (ES_AUTOHSCROLL as u32), 150, 273, 170, 24, hwnd, ID_EDIT_OLD_PWD as _, hinstance, null_mut());
 
-        let lbl_new: Vec<u16> = "새 비밀번호:\0".encode_utf16().collect();
+        let lbl_new: Vec<u16> = "New password:\0".encode_utf16().collect();
         CreateWindowExW(0, static_class.as_ptr(), lbl_new.as_ptr(), WS_CHILD | WS_VISIBLE, 36, 308, 110, 20, hwnd, null_mut(), hinstance, null_mut());
         let edit_new_pwd = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_PASSWORD as u32) | (ES_AUTOHSCROLL as u32), 150, 306, 170, 24, hwnd, ID_EDIT_NEW_PWD as _, hinstance, null_mut());
 
-        let lbl_conf: Vec<u16> = "새 비밀번호 확인:\0".encode_utf16().collect();
+        let lbl_conf: Vec<u16> = "Confirm new password:\0".encode_utf16().collect();
         CreateWindowExW(0, static_class.as_ptr(), lbl_conf.as_ptr(), WS_CHILD | WS_VISIBLE, 36, 341, 110, 20, hwnd, null_mut(), hinstance, null_mut());
         let edit_confirm_pwd = CreateWindowExW(WS_EX_CLIENTEDGE, edit_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_PASSWORD as u32) | (ES_AUTOHSCROLL as u32), 150, 339, 170, 24, hwnd, ID_EDIT_CONFIRM_PWD as _, hinstance, null_mut());
 
@@ -427,15 +427,15 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         disable_ime(edit_new_pwd);
         disable_ime(edit_confirm_pwd);
 
-        let btn_pwd_txt: Vec<u16> = "비밀번호 변경\0".encode_utf16().collect();
+        let btn_pwd_txt: Vec<u16> = "Change Password\0".encode_utf16().collect();
         CreateWindowExW(0, btn_class.as_ptr(), btn_pwd_txt.as_ptr(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32), 340, 290, 135, 42, hwnd, ID_BTN_CHANGE_PWD as _, hinstance, null_mut());
 
         let label_pwd_msg = CreateWindowExW(0, static_class.as_ptr(), [0u16].as_ptr(), WS_CHILD | WS_VISIBLE, 36, 374, 440, 20, hwnd, ID_LABEL_PWD_MSG as _, hinstance, null_mut());
 
         // -------------------------------------------------------------
-        // Group 4: 자동 시작 설정
+        // Group 4: Startup settings
         // -------------------------------------------------------------
-        let grp4_title: Vec<u16> = " ⚙️ 부팅 설정 \0".encode_utf16().collect();
+        let grp4_title: Vec<u16> = " ⚙️ Startup \0".encode_utf16().collect();
         CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -451,7 +451,7 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
             null_mut(),
         );
 
-        let chk_txt: Vec<u16> = "Windows 부팅 시 백그라운드로 자동 실행\0".encode_utf16().collect();
+        let chk_txt: Vec<u16> = "Run automatically in the background at Windows logon\0".encode_utf16().collect();
         let chk_autostart = CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -470,7 +470,7 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         // -------------------------------------------------------------
         // Bottom Action Buttons
         // -------------------------------------------------------------
-        let save_txt: Vec<u16> = "설정 저장\0".encode_utf16().collect();
+        let save_txt: Vec<u16> = "Save Settings\0".encode_utf16().collect();
         let btn_save = CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -486,7 +486,7 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
             null_mut(),
         );
 
-        let close_txt: Vec<u16> = "닫기\0".encode_utf16().collect();
+        let close_txt: Vec<u16> = "Close\0".encode_utf16().collect();
         CreateWindowExW(
             0,
             btn_class.as_ptr(),

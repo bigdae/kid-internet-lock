@@ -105,36 +105,36 @@ unsafe extern "system" fn tray_wnd_proc(
                         };
 
                         let status_label = if is_blocked {
-                            "야간 인터넷 지킴이 [🔴 인터넷 차단 중]\0"
+                            "Kid Internet Lock [🔴 Internet Blocked]\0"
                         } else {
-                            "야간 인터넷 지킴이 [🟢 인터넷 정상]\0"
+                            "Kid Internet Lock [🟢 Internet Allowed]\0"
                         };
                         let status_wide: Vec<u16> = status_label.encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING | MF_GRAYED | MF_DISABLED, 0, status_wide.as_ptr());
                         AppendMenuW(hmenu, MF_SEPARATOR, 0, null_mut());
 
-                        let t30: Vec<u16> = "30분 임시 허용\0".encode_utf16().collect();
+                        let t30: Vec<u16> = "Allow 30 Minutes\0".encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_TEMP_30, t30.as_ptr());
 
-                        let t60: Vec<u16> = "1시간 임시 허용\0".encode_utf16().collect();
+                        let t60: Vec<u16> = "Allow 1 Hour\0".encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_TEMP_60, t60.as_ptr());
 
                         if has_temp_allow {
-                            let tcancel: Vec<u16> = "임시 허용 해제\0".encode_utf16().collect();
+                            let tcancel: Vec<u16> = "Cancel Temporary Allow\0".encode_utf16().collect();
                             AppendMenuW(hmenu, MF_STRING, CMD_TEMP_CANCEL, tcancel.as_ptr());
                         }
 
                         AppendMenuW(hmenu, MF_SEPARATOR, 0, null_mut());
 
-                        let toggle_txt: Vec<u16> = "지금 즉시 차단 / 해제 전환\0".encode_utf16().collect();
+                        let toggle_txt: Vec<u16> = "Block / Unblock Now\0".encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_TOGGLE_NOW, toggle_txt.as_ptr());
 
-                        let settings_txt: Vec<u16> = "관리자 설정 (S)...\0".encode_utf16().collect();
+                        let settings_txt: Vec<u16> = "Admin Settings (S)...\0".encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_SETTINGS, settings_txt.as_ptr());
 
                         AppendMenuW(hmenu, MF_SEPARATOR, 0, null_mut());
 
-                        let exit_txt: Vec<u16> = "프로그램 종료 (X)\0".encode_utf16().collect();
+                        let exit_txt: Vec<u16> = "Exit (X)\0".encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_EXIT, exit_txt.as_ptr());
 
                         SetForegroundWindow(hwnd);
@@ -146,7 +146,7 @@ unsafe extern "system" fn tray_wnd_proc(
                         let state = ctx.shared_state.lock().unwrap();
                         state.config.clone()
                     };
-                    if prompt_admin_password(null_mut(), &config, "야간 인터넷 지킴이 - 관리자 인증") {
+                    if prompt_admin_password(null_mut(), &config, "Kid Internet Lock - Admin Authentication") {
                         open_settings_dialog(ctx.shared_state.clone());
                     }
                 }
@@ -165,7 +165,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "30분 임시 허용 - 관리자 인증") {
+                        if prompt_admin_password(null_mut(), &config, "Allow 30 Minutes - Admin Authentication") {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.set_temporary_allow(30);
@@ -179,7 +179,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "1시간 임시 허용 - 관리자 인증") {
+                        if prompt_admin_password(null_mut(), &config, "Allow 1 Hour - Admin Authentication") {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.set_temporary_allow(60);
@@ -193,7 +193,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "임시 허용 해제 - 관리자 인증") {
+                        if prompt_admin_password(null_mut(), &config, "Cancel Temporary Allow - Admin Authentication") {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.cancel_temporary_allow();
@@ -208,7 +208,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "즉시 차단/해제 - 관리자 인증") {
+                        if prompt_admin_password(null_mut(), &config, "Block / Unblock Now - Admin Authentication") {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.toggle_manual_override();
@@ -222,7 +222,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "야간 인터넷 지킴이 - 관리자 설정 인증") {
+                        if prompt_admin_password(null_mut(), &config, "Kid Internet Lock - Settings Authentication") {
                             open_settings_dialog(ctx.shared_state.clone());
                         }
                     }
@@ -232,7 +232,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             state.config.clone()
                         };
                         // Per requirements: must authenticate to exit so children cannot close it
-                        if prompt_admin_password(null_mut(), &config, "야간 인터넷 지킴이 - 종료 관리자 인증") {
+                        if prompt_admin_password(null_mut(), &config, "Kid Internet Lock - Exit Authentication") {
                             // Intentional exit: stop watchdog tasks and auto-restart guard
                             watchdog::stop_guardian();
                             // Safely restore firewall before normal exit
@@ -313,7 +313,7 @@ pub fn run_tray_app(shared_state: SharedAppState) -> Result<(), String> {
         nid.uCallbackMessage = WM_TRAYICON;
         nid.hIcon = icons.green_icon;
 
-        let default_tip: Vec<u16> = "야간 인터넷 지킴이\0".encode_utf16().collect();
+        let default_tip: Vec<u16> = "Kid Internet Lock\0".encode_utf16().collect();
         for (i, &c) in default_tip.iter().enumerate().take(127) {
             nid.szTip[i] = c;
         }

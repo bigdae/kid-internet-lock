@@ -28,9 +28,9 @@ use windows_sys::Win32::System::Threading::{
 use crate::single_instance::INSTANCE_MUTEX_NAME;
 
 const SERVICE_NAME: &str = "KidInternetLockGuard";
-const SERVICE_DISPLAY_NAME: &str = "야간 인터넷 지킴이 감시 서비스";
+const SERVICE_DISPLAY_NAME: &str = "Kid Internet Lock Guard";
 const SERVICE_DESCRIPTION: &str =
-    "야간 인터넷 지킴이가 종료되면 즉시 다시 실행합니다. (Kid Internet Lock Guard)";
+    "Restarts Kid Internet Lock immediately if it is terminated.";
 
 static STATUS_HANDLE: AtomicIsize = AtomicIsize::new(0);
 static STOP_EVENT: AtomicIsize = AtomicIsize::new(0);

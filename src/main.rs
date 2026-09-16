@@ -51,8 +51,8 @@ fn main() {
         }
         if !admin::relaunch_as_admin() {
             unsafe {
-                let title: Vec<u16> = "관리자 권한 필요\0".encode_utf16().collect();
-                let msg: Vec<u16> = "야간 인터넷 지킴이는 윈도우 방화벽을 제어하기 위해 관리자 권한이 필요합니다.\n'관리자 권한으로 실행'을 선택해주세요.\0"
+                let title: Vec<u16> = "Administrator Rights Required\0".encode_utf16().collect();
+                let msg: Vec<u16> = "Kid Internet Lock needs administrator rights to control Windows Firewall.\nPlease choose 'Run as administrator'.\0"
                     .encode_utf16()
                     .collect();
                 MessageBoxW(null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);
@@ -67,8 +67,8 @@ fn main() {
         None => {
             if !silent {
                 unsafe {
-                    let title: Vec<u16> = "알림\0".encode_utf16().collect();
-                    let msg: Vec<u16> = "야간 인터넷 지킴이가 이미 실행 중입니다.\n작업 표시줄 오른쪽 아래(트레이 아이콘)를 확인해주세요.\0"
+                    let title: Vec<u16> = "Notice\0".encode_utf16().collect();
+                    let msg: Vec<u16> = "Kid Internet Lock is already running.\nPlease check the tray icon in the bottom-right corner of the taskbar.\0"
                         .encode_utf16()
                         .collect();
                     MessageBoxW(null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
@@ -96,8 +96,8 @@ fn main() {
     // 6. Run system tray loop
     if let Err(err) = tray::run_tray_app(shared_state) {
         unsafe {
-            let title: Vec<u16> = "오류\0".encode_utf16().collect();
-            let msg: Vec<u16> = format!("프로그램 실행 중 오류가 발생했습니다:\n{}\0", err)
+            let title: Vec<u16> = "Error\0".encode_utf16().collect();
+            let msg: Vec<u16> = format!("An error occurred while running the application:\n{}\0", err)
                 .encode_utf16()
                 .collect();
             MessageBoxW(null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);

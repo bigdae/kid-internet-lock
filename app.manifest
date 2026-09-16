@@ -6,7 +6,7 @@
       name="KidInternetLock"
       type="win32"
   />
-  <description>야간 인터넷 지킴이 (Kid Internet Lock)</description>
+  <description>Kid Internet Lock</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>

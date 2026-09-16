@@ -72,7 +72,7 @@ unsafe extern "system" fn pwd_dlg_proc(
                         ctx.verified = true;
                         DestroyWindow(hwnd);
                     } else {
-                        let err_text = "비밀번호가 올바르지 않습니다.\0".encode_utf16().collect::<Vec<u16>>();
+                        let err_text = "Incorrect password.\0".encode_utf16().collect::<Vec<u16>>();
                         SetWindowTextW(ctx.error_hwnd, err_text.as_ptr());
                         SetWindowTextW(ctx.edit_hwnd, [0u16].as_ptr());
                         SetFocus(ctx.edit_hwnd);
@@ -163,7 +163,7 @@ pub fn prompt_admin_password(parent_hwnd: HWND, config: &AppConfig, title: &str)
         let font_bold = create_ui_font(13, true);
 
         // Instruction label
-        let label_text: Vec<u16> = "관리자 비밀번호를 입력해주세요:\0".encode_utf16().collect();
+        let label_text: Vec<u16> = "Enter the admin password:\0".encode_utf16().collect();
         let static_class: Vec<u16> = "STATIC\0".encode_utf16().collect();
         let edit_class: Vec<u16> = "EDIT\0".encode_utf16().collect();
         let btn_class: Vec<u16> = "BUTTON\0".encode_utf16().collect();
@@ -218,7 +218,7 @@ pub fn prompt_admin_password(parent_hwnd: HWND, config: &AppConfig, title: &str)
         );
 
         // OK Button
-        let ok_text: Vec<u16> = "확인\0".encode_utf16().collect();
+        let ok_text: Vec<u16> = "OK\0".encode_utf16().collect();
         let btn_ok = CreateWindowExW(
             0,
             btn_class.as_ptr(),
@@ -235,7 +235,7 @@ pub fn prompt_admin_password(parent_hwnd: HWND, config: &AppConfig, title: &str)
         );
 
         // Cancel Button
-        let cancel_text: Vec<u16> = "취소\0".encode_utf16().collect();
+        let cancel_text: Vec<u16> = "Cancel\0".encode_utf16().collect();
         let _btn_cancel = CreateWindowExW(
             0,
             btn_class.as_ptr(),
