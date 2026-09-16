@@ -1,0 +1,16 @@
+[package]
+name = "kid_internet_lock"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = "0.4.45"
+hex = "0.4.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Ime", "Win32_UI_Controls", "Win32_System_SystemServices", "Win32_System_Services", "Win32_System_RemoteDesktop", "Win32_System_Environment"] }
+
+
+[build-dependencies]
+winresource = "0.1.31"
