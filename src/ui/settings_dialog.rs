@@ -185,7 +185,7 @@ unsafe fn save_settings_from_dialog(ctx: &SettingsContext, hwnd: HWND, announce:
 
         let auto_start = SendMessageW(ctx.chk_autostart, BM_GETCHECK, 0, 0) == 1;
 
-        {
+        let saved_cfg = {
             let mut state = ctx.shared_state.lock().unwrap();
             for (i, (enabled, sh, sm, eh, em, sh2, sm2, eh2, em2)) in parsed_days.iter().enumerate() {
                 state.config.weekly_schedule[i].enabled = *enabled;
@@ -204,7 +204,11 @@ unsafe fn save_settings_from_dialog(ctx: &SettingsContext, hwnd: HWND, announce:
             let _ = state.config.save();
             let _ = state.config.sync_autostart();
             state.evaluate_and_sync();
-        }
+            state.config.clone()
+        };
+
+        // Keep the Desktop schedule image in sync on every save (best effort).
+        let _ = crate::wallpaper::save_schedule_image(&saved_cfg);
 
         if announce {
             let title: Vec<u16> = format!("{}\0", lang::TITLE_SAVED).encode_utf16().collect();
@@ -379,13 +383,13 @@ unsafe extern "system" fn settings_wnd_proc(
                     }
                     ID_BTN_WALLPAPER => {
                         // One click: validate + save, then render the schedule
-                        // image and set it as the desktop wallpaper.
+                        // image to the Desktop.
                         if save_settings_from_dialog(ctx, hwnd, false) {
                             let cfg = ctx.shared_state.lock().unwrap().config.clone();
-                            match crate::wallpaper::apply_schedule_wallpaper(&cfg) {
-                                Ok(_) => {
+                            match crate::wallpaper::save_schedule_image(&cfg) {
+                                Ok(path) => {
                                     let title: Vec<u16> = format!("{}\0", lang::TITLE_SAVED).encode_utf16().collect();
-                                    let msg: Vec<u16> = format!("{}\0", lang::MSG_WALLPAPER_OK).encode_utf16().collect();
+                                    let msg: Vec<u16> = format!("{}\n{}\0", lang::MSG_WALLPAPER_OK, path.display()).encode_utf16().collect();
                                     MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
                                 }
                                 Err(e) => {

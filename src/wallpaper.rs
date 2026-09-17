@@ -1,6 +1,6 @@
 //! Renders the weekly available-time schedule as a BMP image and
-//! sets it as the desktop wallpaper. Read-only w.r.t. the system:
-//! no firewall or service changes, only the user's own wallpaper.
+//! saves it to the user's Desktop so it can be opened anytime.
+//! Read-only w.r.t. the system: no firewall or service changes.
 
 use crate::config::AppConfig;
 use crate::lang;
@@ -8,16 +8,19 @@ use crate::ui::font::create_ui_font;
 use chrono::Local;
 use std::path::PathBuf;
 use std::ptr::null_mut;
+use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Graphics::Gdi::{
     CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC, DeleteObject,
     GetDC, GetDIBits, Rectangle, ReleaseDC, SelectObject, SetBkMode, SetTextColor, TextOutW,
     BI_RGB, BITMAPFILEHEADER, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HGDIOBJ, RGBQUAD,
     TRANSPARENT,
 };
+use windows_sys::Win32::UI::Shell::{SHGetFolderPathW, CSIDL_DESKTOP};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SystemParametersInfoW, SM_CXSCREEN, SM_CYSCREEN, SPIF_SENDCHANGE,
-    SPIF_UPDATEINIFILE, SPI_SETDESKWALLPAPER,
+    GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
 };
+
+pub const SCHEDULE_IMAGE_NAME: &str = "InternetSchedule.bmp";
 
 const DAY_MINUTES: u32 = 1440;
 
@@ -332,18 +335,30 @@ fn draw_schedule(canvas: &Canvas, cfg: &AppConfig) {
     }
 }
 
-pub fn wallpaper_path() -> PathBuf {
-    let cfg_path = AppConfig::config_path();
-    let dir = cfg_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
-    dir.join("schedule_wallpaper.bmp")
+/// Resolves the current user's Desktop folder (OneDrive redirection aware).
+fn desktop_dir() -> Result<PathBuf, String> {
+    unsafe {
+        let mut buf = [0u16; 260];
+        let hr = SHGetFolderPathW(null_mut(), CSIDL_DESKTOP as i32, null_mut() as HANDLE, 0, buf.as_mut_ptr());
+        if hr != 0 {
+            return Err("Could not locate the Desktop folder".to_string());
+        }
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        let dir = String::from_utf16_lossy(&buf[..len]);
+        if dir.is_empty() {
+            return Err("Could not locate the Desktop folder".to_string());
+        }
+        Ok(PathBuf::from(dir))
+    }
 }
 
-/// Renders the current schedule and sets it as the desktop wallpaper.
-/// Returns the written image path.
-pub fn apply_schedule_wallpaper(cfg: &AppConfig) -> Result<PathBuf, String> {
+pub fn schedule_image_path() -> Result<PathBuf, String> {
+    Ok(desktop_dir()?.join(SCHEDULE_IMAGE_NAME))
+}
+
+/// Renders the current schedule and saves it as a BMP on the Desktop
+/// so it can be opened anytime. Returns the written image path.
+pub fn save_schedule_image(cfg: &AppConfig) -> Result<PathBuf, String> {
     let (w, h) = unsafe {
         let w = GetSystemMetrics(SM_CXSCREEN);
         let h = GetSystemMetrics(SM_CYSCREEN);
@@ -358,32 +373,8 @@ pub fn apply_schedule_wallpaper(cfg: &AppConfig) -> Result<PathBuf, String> {
     draw_schedule(&canvas, cfg);
     let bytes = unsafe { canvas.to_bmp_bytes()? };
 
-    let path = wallpaper_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
+    let path = schedule_image_path()?;
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
-
-    let wide: Vec<u16> = path
-        .to_string_lossy()
-        .chars()
-        .chain(std::iter::once('\0'))
-        .flat_map(|c| {
-            let mut buf = [0u16; 2];
-            c.encode_utf16(&mut buf).to_vec()
-        })
-        .collect();
-    let ok = unsafe {
-        SystemParametersInfoW(
-            SPI_SETDESKWALLPAPER,
-            0,
-            wide.as_ptr() as *mut _,
-            SPIF_UPDATEINIFILE | SPIF_SENDCHANGE,
-        )
-    };
-    if ok == 0 {
-        return Err("SystemParametersInfoW failed".to_string());
-    }
     Ok(path)
 }
 

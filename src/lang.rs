@@ -356,22 +356,22 @@ pub const BTN_CLOSE: &str = "닫기";
 pub const BTN_CLOSE: &str = "Close";
 
 #[cfg(feature = "ko")]
-pub const BTN_WALLPAPER: &str = "시간표 바탕화면 설정";
+pub const BTN_WALLPAPER: &str = "시간표 이미지 저장";
 #[cfg(not(feature = "ko"))]
-pub const BTN_WALLPAPER: &str = "Set Schedule Wallpaper";
+pub const BTN_WALLPAPER: &str = "Save Schedule Image";
 
 #[cfg(feature = "ko")]
-pub const MSG_WALLPAPER_OK: &str = "설정이 저장되고 시간표 바탕화면이 적용되었습니다.";
+pub const MSG_WALLPAPER_OK: &str = "설정이 저장되고 시간표 이미지가 바탕화면에 저장되었습니다.";
 #[cfg(not(feature = "ko"))]
-pub const MSG_WALLPAPER_OK: &str = "Settings saved and schedule wallpaper applied.";
+pub const MSG_WALLPAPER_OK: &str = "Settings saved and schedule image saved to Desktop.";
 
 #[cfg(feature = "ko")]
 pub fn wallpaper_failed(detail: &str) -> String {
-    format!("바탕화면 설정 실패: {detail}")
+    format!("이미지 저장 실패: {detail}")
 }
 #[cfg(not(feature = "ko"))]
 pub fn wallpaper_failed(detail: &str) -> String {
-    format!("Wallpaper failed: {detail}")
+    format!("Image save failed: {detail}")
 }
 
 #[cfg(feature = "ko")]
