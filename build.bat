@@ -13,4 +13,8 @@ echo [Success] Standalone executable created: KidInternetLock.exe
 echo File size:
 dir /-C "%~dp0KidInternetLock.exe" | findstr /i "KidInternetLock.exe"
 echo.
+
+echo [Code Signing] Applying local digital signature...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sign_app.ps1"
+echo.
 pause

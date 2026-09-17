@@ -33,7 +33,7 @@
    - Temporary allow for 30 or 60 minutes (for emergencies or homework)
    - "Block / unblock now" manual toggle
    - Change the admin password
-   - Register/unregister auto-start at Windows logon (HKCU Run registry)
+   - Register/unregister auto-start at Windows logon (Windows Task Scheduler with `HighestAvailable` privileges, eliminating UAC prompts at boot)
 
 6. **Reliable blocking mechanism**
    - Controls Windows Firewall outbound rules instead of powering off network hardware (Wi-Fi/LAN)

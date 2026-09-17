@@ -5,8 +5,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
-    HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_SZ,
+    RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
+    HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE,
 };
 
 const DEFAULT_SALT: &str = "kid_internet_lock_salt_v1";
@@ -124,67 +124,226 @@ impl AppConfig {
         Ok(())
     }
 
-    /// Syncs Windows registry auto-start setting.
+    /// Syncs Windows auto-start setting using Task Scheduler (HighestAvailable)
+    /// to run elevated at logon without UAC confirmation prompts.
+    pub fn sync_autostart(&self) -> Result<(), String> {
+        set_autostart(self.auto_start)
+    }
+
+    /// Backward compatibility alias for sync_autostart.
+    #[allow(dead_code)]
     pub fn sync_autostart_registry(&self) -> Result<(), String> {
-        set_autostart_registry(self.auto_start)
+        self.sync_autostart()
     }
 }
 
-/// Sets or deletes the HKCU Run registry value.
-pub fn set_autostart_registry(enable: bool) -> Result<(), String> {
+pub const AUTOSTART_TASK_NAME: &str = "KidInternetLock_AutoStart";
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn get_current_user_principal() -> Option<String> {
+    match (std::env::var("USERDOMAIN"), std::env::var("USERNAME")) {
+        (Ok(domain), Ok(name)) if !domain.is_empty() && !name.is_empty() => {
+            Some(format!("{}\\{}", domain, name))
+        }
+        (_, Ok(name)) if !name.is_empty() => Some(name),
+        _ => None,
+    }
+}
+
+/// Creates or updates the Task Scheduler task to run the app at Windows logon
+/// with elevated administrator privileges (RunLevel: HighestAvailable).
+/// This eliminates any UAC "Do you want to allow this app..." prompt at boot time.
+pub fn create_autostart_task() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe_str = exe_path.to_string_lossy().to_string();
+
+    let user = get_current_user_principal().unwrap_or_default();
+    let user_principal_xml = if user.is_empty() {
+        String::new()
+    } else {
+        format!("      <UserId>{}</UserId>\n", xml_escape(&user))
+    };
+    let user_trigger_xml = if user.is_empty() {
+        String::new()
+    } else {
+        format!("      <UserId>{}</UserId>\n", xml_escape(&user))
+    };
+
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n\
+<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n\
+  <RegistrationInfo>\n\
+    <Description>KidInternetLock startup at logon with highest privileges</Description>\n\
+  </RegistrationInfo>\n\
+  <Principals>\n\
+    <Principal id=\"Author\">\n\
+{user_principal_xml}\
+      <LogonType>InteractiveToken</LogonType>\n\
+      <RunLevel>HighestAvailable</RunLevel>\n\
+    </Principal>\n\
+  </Principals>\n\
+  <Settings>\n\
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\n\
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\n\
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\n\
+    <StartWhenAvailable>true</StartWhenAvailable>\n\
+    <AllowStartOnDemand>true</AllowStartOnDemand>\n\
+    <Enabled>true</Enabled>\n\
+    <Hidden>false</Hidden>\n\
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>\n\
+    <WakeToRun>false</WakeToRun>\n\
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\n\
+    <Priority>7</Priority>\n\
+  </Settings>\n\
+  <Triggers>\n\
+    <LogonTrigger>\n\
+      <Enabled>true</Enabled>\n\
+{user_trigger_xml}\
+    </LogonTrigger>\n\
+  </Triggers>\n\
+  <Actions Context=\"Author\">\n\
+    <Exec>\n\
+      <Command>\"{exe}\"</Command>\n\
+      <Arguments>--silent</Arguments>\n\
+    </Exec>\n\
+  </Actions>\n\
+</Task>\n",
+        user_principal_xml = user_principal_xml,
+        user_trigger_xml = user_trigger_xml,
+        exe = xml_escape(&exe_str),
+    );
+
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let xml_path = std::env::temp_dir().join(format!(
+        "kid_internet_lock_autostart_{}_{}.xml",
+        std::process::id(),
+        nonce
+    ));
+
+    let mut bytes = Vec::with_capacity(xml.len() * 2 + 2);
+    bytes.push(0xFF);
+    bytes.push(0xFE);
+    for unit in xml.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+
+    fs::write(&xml_path, &bytes).map_err(|e| format!("Failed to write task XML: {}", e))?;
+
+    let output = Command::new("schtasks")
+        .args(&[
+            "/Create",
+            "/F",
+            "/TN",
+            AUTOSTART_TASK_NAME,
+            "/XML",
+            &xml_path.to_string_lossy(),
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    let _ = fs::remove_file(&xml_path);
+
+    match output {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(format!(
+            "Failed to register autostart task: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )),
+        Err(e) => Err(format!("Failed to execute schtasks: {}", e)),
+    }
+}
+
+/// Deletes the autostart scheduled task.
+pub fn delete_autostart_task() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let output = Command::new("schtasks")
+        .args(&["/Delete", "/F", "/TN", AUTOSTART_TASK_NAME])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    match output {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to delete autostart task: {}", e)),
+    }
+}
+
+/// Removes any legacy HKCU Run registry value if it was set in earlier versions.
+pub fn remove_legacy_run_registry() -> Result<(), String> {
     let key_wide: Vec<u16> = RUN_KEY_PATH.encode_utf16().chain(std::iter::once(0)).collect();
     let val_wide: Vec<u16> = RUN_VALUE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
 
     unsafe {
         let mut hkey = null_mut();
-        let status = RegOpenKeyExW(
+        if RegOpenKeyExW(
             HKEY_CURRENT_USER,
             key_wide.as_ptr(),
             0,
-            KEY_SET_VALUE | KEY_QUERY_VALUE,
+            KEY_SET_VALUE,
             &mut hkey,
-        );
-
-        if status != 0 {
-            return Err(format!("Failed to open registry key: error code {}", status));
+        ) != 0
+        {
+            return Ok(());
         }
 
-        let result = if enable {
-            let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
-            let formatted_cmd = format!("\"{}\" --silent", exe_path.to_string_lossy());
-            let cmd_wide: Vec<u16> = formatted_cmd.encode_utf16().chain(std::iter::once(0)).collect();
-
-            let set_res = RegSetValueExW(
-                hkey,
-                val_wide.as_ptr(),
-                0,
-                REG_SZ,
-                cmd_wide.as_ptr() as *const u8,
-                (cmd_wide.len() * std::mem::size_of::<u16>()) as u32,
-            );
-            if set_res == 0 {
-                Ok(())
-            } else {
-                Err(format!("Failed to set registry value: error code {}", set_res))
-            }
-        } else {
-            let del_res = RegDeleteValueW(hkey, val_wide.as_ptr());
-            // 2 is ERROR_FILE_NOT_FOUND, which means already deleted/not present.
-            if del_res == 0 || del_res == 2 {
-                Ok(())
-            } else {
-                Err(format!("Failed to delete registry value: error code {}", del_res))
-            }
-        };
-
+        let _ = RegDeleteValueW(hkey, val_wide.as_ptr());
         RegCloseKey(hkey);
-        result
+        Ok(())
     }
 }
 
-/// Checks whether autostart is registered in HKCU Run registry.
+/// Sets or deletes the autostart configuration.
+/// Uses Windows Task Scheduler with HighestAvailable privileges to prevent UAC prompts at logon,
+/// and ensures legacy HKCU\Run registry entries are cleaned up.
+pub fn set_autostart(enable: bool) -> Result<(), String> {
+    let _ = remove_legacy_run_registry();
+
+    if enable {
+        create_autostart_task()
+    } else {
+        delete_autostart_task()
+    }
+}
+
+/// Backward compatibility function for existing callers.
+#[allow(dead_code)]
+pub fn set_autostart_registry(enable: bool) -> Result<(), String> {
+    set_autostart(enable)
+}
+
+/// Checks whether autostart is registered in Windows Task Scheduler or legacy registry.
 #[allow(dead_code)]
 pub fn is_autostart_registered() -> bool {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let output = Command::new("schtasks")
+        .args(&["/Query", "/TN", AUTOSTART_TASK_NAME])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    if let Ok(out) = output {
+        if out.status.success() {
+            return true;
+        }
+    }
+
+    // Check legacy registry as secondary fallback
     let key_wide: Vec<u16> = RUN_KEY_PATH.encode_utf16().chain(std::iter::once(0)).collect();
     let val_wide: Vec<u16> = RUN_VALUE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
 

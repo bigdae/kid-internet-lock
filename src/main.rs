@@ -84,11 +84,9 @@ fn main() {
     service::ensure_installed();
     watchdog::start_guardian();
 
-    // 4. Load user configuration
+    // 4. Load user configuration and synchronize UAC-free autostart task
     let config = AppConfig::load();
-    if config.auto_start {
-        let _ = config.sync_autostart_registry();
-    }
+    let _ = config.sync_autostart();
 
     // 5. Initialize shared state
     let shared_state = Arc::new(Mutex::new(AppState::new(config)));

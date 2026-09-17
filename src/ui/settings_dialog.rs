@@ -215,7 +215,7 @@ unsafe extern "system" fn settings_wnd_proc(
                             state.config.auto_start = auto_start;
 
                             let _ = state.config.save();
-                            let _ = state.config.sync_autostart_registry();
+                            let _ = state.config.sync_autostart();
                             state.evaluate_and_sync();
                         }
 

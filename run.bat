@@ -12,4 +12,9 @@ if not exist "%~dp0KidInternetLock.exe" (
 )
 
 echo [Kid Internet Lock] Starting...
-start "" "%~dp0KidInternetLock.exe"
+schtasks /query /tn "KidInternetLock_AutoStart" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    schtasks /run /tn "KidInternetLock_AutoStart" >nul 2>&1
+) else (
+    start "" "%~dp0KidInternetLock.exe"
+)
