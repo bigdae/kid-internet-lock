@@ -1,44 +1,45 @@
 # 🌙 Kid Internet Lock
 
-> 아이의 심야 인터넷을 자동으로 차단해 주는 가벼운 Windows 프로그램.
-> Rust 100% 단일 실행 파일(약 0.6 MB), 설치 불필요.
+> A tiny Windows program that blocks the internet automatically when it's bedtime.
+> 100% Rust, single file (~0.6 MB), no install needed.
 
 ---
 
-## 왜 쓰나요?
+## Why use it?
 
-- 밤 12시 넘도록 유튜브 보는 아이, 말로만 타일러봤자 소용없다면
-- 정해둔 시간이 되면 인터넷이 **알아서 끊기고**, 끝나면 **알아서 풀립니다**
-- 아이는 언제 되는지 `InternetSchedule.exe` 하나로 바로 확인 가능
+- Telling the kids to get off YouTube at midnight just doesn't work
+- At the set time the internet **turns itself off**, and **back on** when the window ends
+- Kids can check the schedule themselves with a simple read-only viewer
 
-## 주요 기능
+## Features
 
-- 📅 **요일별 차단 시간 (1일 2개 시간대)** — 월~일 각각 다르게 설정, 자정 넘김(예: 23:00–07:00) 지원
-- ⚡ **일괄 입력** — 한 번 입력해서 전체 요일에 복사
-- 🟢🔴 **트레이 상주** — 아이콘 색으로 상태 확인, 툴팁에 다음 차단/해제 시간 표시
-- 🔑 **관리자 비밀번호** — 설정·임시 허용·종료 모두 비밀번호 필요 (기본값 `1q2w3e`)
-- ⏱️ **임시 허용 30분 / 1시간** — 숙제 등 급할 때만 잠깐 풀기
-- 🛡️ **끄기 방지** — 작업 관리자로 못 끄게 가드 서비스 + 워치독이 되살림
-- 👶 **아이용 시간표 뷰어** (`InternetSchedule.exe`) — "지금 되는지, 언제 되는지" 읽기 전용 화면
-- 🌐 **한글/영어 UI** — `build.bat`가 윈도우 언어에 맞춰 자동 선택
+- 📅 **Per-weekday block times (2 slots a day)** — different hours for each day, midnight crossing supported (e.g. 23:00–07:00)
+- ⚡ **Batch input** — type once, copy to every weekday
+- 🟢🔴 **Lives in the tray** — icon color shows the state, tooltip shows the next block/release time
+- 🔑 **Admin password** — settings, temporary access and exit all need it (default `1q2w3e`)
+- ⏱️ **Temporary allow (30 min / 1 hour)** — for homework emergencies
+- 🛡️ **Tamper-resistant** — a guard service + watchdog bring it back if killed from Task Manager
+- 👶 **Kid schedule viewer** (`InternetSchedule.exe`) — read-only "is it on now, and when?" screen
+- 🌐 **English/Korean UI** — `build.bat` picks the language from your Windows locale automatically
 
-## 사용법
+## Usage
 
-1. `KidInternetLock.exe` 실행 → UAC 허용 (방화벽 제어에 관리자 권한 필요)
-2. 트레이 아이콘 우클릭 → **관리자 설정** (비밀번호 `1q2w3e`) → 요일별 시간 입력 → **설정 저장**
-3. 아이 PC에는 `InternetSchedule.exe` 바로가기를 만들어 주면 끝
+1. Run `KidInternetLock.exe` → approve the UAC prompt (needs admin rights for the firewall)
+2. Right-click the tray icon → **Admin Settings** (password `1q2w3e`) → set times per weekday → **Save Settings**
+3. Put an `InternetSchedule.exe` shortcut on the kid's desktop — done
 
-## 직접 빌드하기
+## Build from source
 
-관리자 권한 터미널에서:
+From an elevated terminal:
 
 ```
 build.bat
 ```
 
-영어판 강제 빌드: `cargo build --release`
+Force English: `cargo build --release`
+Force Korean: `cargo build --release --features ko`
 
-## 알아두기
+## Good to know
 
-- 차단 중이어도 이미 연결된 영상은 잠시 이어질 수 있어요. 앱을 껐다 켜면 바로 적용됩니다
-- 종료도 비밀번호가 있어야 합니다. 정상 종료하면 방화벽 규칙까지 깨끗이 복원됩니다
+- A video already playing may continue briefly while blocked — restart the app and it applies immediately
+- Exiting needs the password too. A normal exit restores the firewall rules cleanly
