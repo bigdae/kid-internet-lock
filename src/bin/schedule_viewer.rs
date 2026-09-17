@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 #![allow(dead_code)]
 
-//! Kid-facing read-only viewer: shows per-weekday internet available times.
+//! Kid-facing read-only viewer: today-first clock timetable.
 //! No admin rights, no firewall changes, no tray icon — just a closable window.
 
 #[path = "../config.rs"]
@@ -17,12 +17,16 @@ mod font;
 
 use chrono::{Datelike, Local, Timelike};
 use config::AppConfig;
-use lang::WEEKDAY_FULL;
 use font::{create_ui_font, set_control_fonts};
+use lang::WEEKDAY_FULL;
 use std::mem::zeroed;
 use std::ptr::null_mut;
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::{COLOR_BTNFACE, HBRUSH};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::Graphics::Gdi::{
+    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, InvalidateRect, LineTo, MoveToEx,
+    PAINTSTRUCT, Polygon, Rectangle, SelectObject, SetBkMode, SetTextColor, TextOutW,
+    COLOR_BTNFACE, HBRUSH, HDC, HGDIOBJ, HFONT, TRANSPARENT,
+};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
@@ -30,17 +34,34 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     RegisterClassExW, SendMessageW, SetTimer, SetWindowLongPtrW, SetWindowTextW, ShowWindow,
     TranslateMessage, BS_DEFPUSHBUTTON, BS_GROUPBOX, CS_HREDRAW, CS_VREDRAW, GWLP_USERDATA,
     IDC_ARROW, MSG, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_DESTROY,
-    WM_SETFONT, WM_TIMER, WNDCLASSEXW, WS_CAPTION, WS_CHILD, WS_OVERLAPPED, WS_SYSMENU,
-    WS_TABSTOP, WS_VISIBLE,
+    WM_PAINT, WM_SETFONT, WM_TIMER, WNDCLASSEXW, WS_CAPTION, WS_CHILD, WS_OVERLAPPED,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 
 const ID_TIMER_REFRESH: usize = 1;
 const ID_BTN_CLOSE: usize = 110;
 const REFRESH_MS: u32 = 30_000;
 
+// Timeline bar geometry (client coordinates). Must match control layout in main().
+const BAR_X0: i32 = 24;
+const BAR_X1: i32 = 656;
+const BAR_Y: i32 = 112;
+const BAR_H: i32 = 40;
+const HOUR_LABEL_Y: i32 = 88;
+const LEGEND_Y: i32 = 162;
+
 struct ViewerContext {
     status: HWND,
+    today_title: HWND,
+    today_ranges: HWND,
+    tomorrow: HWND,
     rows: [HWND; 7],
+    font_normal: HFONT,
+    font_bold: HFONT,
+}
+
+fn rgb(r: u32, g: u32, b: u32) -> u32 {
+    r | (g << 8) | (b << 16)
 }
 
 fn fmt_hm(total: u32) -> String {
@@ -117,6 +138,36 @@ fn describe_day(cfg: &AppConfig, day_idx: usize) -> String {
         .join(",  ")
 }
 
+fn today_date_str(now: chrono::DateTime<Local>) -> String {
+    #[cfg(feature = "ko")]
+    {
+        format!("{}월 {}일", now.month(), now.day())
+    }
+    #[cfg(not(feature = "ko"))]
+    {
+        now.format("%b %d").to_string()
+    }
+}
+
+fn today_title_text() -> String {
+    let now = Local::now();
+    let idx = now.weekday().num_days_from_monday() as usize;
+    lang::viewer_today_title(&today_date_str(now), WEEKDAY_FULL[idx])
+}
+
+fn today_ranges_text(cfg: &AppConfig) -> String {
+    let now = Local::now();
+    let idx = now.weekday().num_days_from_monday() as usize;
+    lang::viewer_today_ranges(&describe_day(cfg, idx))
+}
+
+fn tomorrow_text(cfg: &AppConfig) -> String {
+    let now = Local::now();
+    let idx = now.weekday().num_days_from_monday() as usize;
+    let tm = (idx + 1) % 7;
+    lang::viewer_tomorrow(WEEKDAY_FULL[tm], &describe_day(cfg, tm))
+}
+
 /// Headline like "Tue 21:30 - Available (until 23:00)".
 fn current_status(cfg: &AppConfig) -> String {
     let now = Local::now();
@@ -159,21 +210,162 @@ fn current_status(cfg: &AppConfig) -> String {
     }
 }
 
-unsafe fn refresh(ctx: &ViewerContext) {
+unsafe fn fill_rect_hdc(hdc: HDC, left: i32, top: i32, right: i32, bottom: i32, color: u32) {
+    unsafe {
+        let brush = CreateSolidBrush(color);
+        if brush.is_null() {
+            return;
+        }
+        let old = SelectObject(hdc, brush as HGDIOBJ);
+        Rectangle(hdc, left, top, right, bottom);
+        SelectObject(hdc, old);
+        DeleteObject(brush as HGDIOBJ);
+    }
+}
+
+unsafe fn text_out_hdc(hdc: HDC, x: i32, y: i32, s: &str, color: u32, font: HFONT) {
+    unsafe {
+        let old_font = SelectObject(hdc, font as HGDIOBJ);
+        SetTextColor(hdc, color);
+        SetBkMode(hdc, TRANSPARENT as i32);
+        let wide: Vec<u16> = s.encode_utf16().collect();
+        TextOutW(hdc, x, y, wide.as_ptr(), wide.len() as i32);
+        SelectObject(hdc, old_font);
+    }
+}
+
+/// Paints the 24-hour clock timetable for today:
+/// green = available, red = blocked, yellow marker = now.
+unsafe fn paint_timeline(hwnd: HWND) {
+    unsafe {
+        let mut ps: PAINTSTRUCT = zeroed();
+        let hdc = BeginPaint(hwnd, &mut ps);
+        if hdc.is_null() {
+            return;
+        }
+
+        let cfg = AppConfig::load();
+        let now = Local::now();
+        let today = now.weekday().num_days_from_monday() as usize;
+        let grid = blocked_grid(&cfg, today);
+        let ranges = allowed_ranges(&grid);
+        let now_min = now.hour() * 60 + now.minute();
+
+        let green = rgb(70, 180, 100);
+        let red = rgb(220, 70, 70);
+        let yellow = rgb(255, 190, 0);
+        let black = rgb(30, 30, 30);
+        let gray = rgb(110, 110, 110);
+
+        let small_font = create_ui_font(12, false);
+
+        // Base: blocked, then overlay available ranges.
+        fill_rect_hdc(hdc, BAR_X0, BAR_Y, BAR_X1, BAR_Y + BAR_H, red);
+        for (s, e) in ranges.iter() {
+            let x0 = BAR_X0 + (BAR_X1 - BAR_X0) * (*s as i32) / 1440;
+            let x1 = BAR_X0 + (BAR_X1 - BAR_X0) * (*e as i32).min(1440) / 1440;
+            if x1 > x0 {
+                fill_rect_hdc(hdc, x0, BAR_Y, x1, BAR_Y + BAR_H, green);
+            }
+        }
+
+        // Hour ticks + labels every 3 hours.
+        for h in (0..=24).step_by(3) {
+            let x = BAR_X0 + (BAR_X1 - BAR_X0) * h / 24;
+            MoveToEx(hdc, x, BAR_Y + BAR_H, null_mut());
+            LineTo(hdc, x, BAR_Y + BAR_H + 5);
+            let label = format!("{:02}", h);
+            let lx = (x - 10).clamp(BAR_X0, BAR_X1 - 20);
+            text_out_hdc(hdc, lx, HOUR_LABEL_Y, &label, gray, small_font);
+        }
+
+        // Now marker: yellow bar + triangle on top.
+        let x_now = BAR_X0 + (BAR_X1 - BAR_X0) * (now_min as i32) / 1440;
+        let xn = x_now.clamp(BAR_X0, BAR_X1);
+        fill_rect_hdc(hdc, xn - 1, BAR_Y - 4, xn + 2, BAR_Y + BAR_H, yellow);
+        {
+            let brush = CreateSolidBrush(yellow);
+            if !brush.is_null() {
+                let old = SelectObject(hdc, brush as HGDIOBJ);
+                let pts = [
+                    POINT {
+                        x: xn - 7,
+                        y: BAR_Y - 14,
+                    },
+                    POINT {
+                        x: xn + 7,
+                        y: BAR_Y - 14,
+                    },
+                    POINT { x: xn, y: BAR_Y - 4 },
+                ];
+                Polygon(hdc, pts.as_ptr(), 3);
+                SelectObject(hdc, old);
+                DeleteObject(brush as HGDIOBJ);
+            }
+        }
+
+        // Legend below the bar.
+        let ly = LEGEND_Y;
+        fill_rect_hdc(hdc, BAR_X0, ly, BAR_X0 + 18, ly + 14, green);
+        text_out_hdc(
+            hdc,
+            BAR_X0 + 22,
+            ly - 3,
+            lang::VIEWER_LEGEND_AVAILABLE,
+            black,
+            small_font,
+        );
+        fill_rect_hdc(hdc, BAR_X0 + 130, ly, BAR_X0 + 148, ly + 14, red);
+        text_out_hdc(
+            hdc,
+            BAR_X0 + 152,
+            ly - 3,
+            lang::VIEWER_LEGEND_BLOCKED,
+            black,
+            small_font,
+        );
+        fill_rect_hdc(hdc, BAR_X0 + 230, ly, BAR_X0 + 248, ly + 14, yellow);
+        let now_label = format!("{} {:02}:{:02}", lang::VIEWER_LEGEND_NOW, now.hour(), now.minute());
+        text_out_hdc(hdc, BAR_X0 + 252, ly - 3, &now_label, black, small_font);
+
+        DeleteObject(small_font as HGDIOBJ);
+        EndPaint(hwnd, &ps);
+    }
+}
+
+unsafe fn set_text(hwnd: HWND, s: &str) {
+    unsafe {
+        let wide: Vec<u16> = format!("{}\0", s).encode_utf16().collect();
+        SetWindowTextW(hwnd, wide.as_ptr());
+    }
+}
+
+unsafe fn refresh(ctx: &ViewerContext, hwnd: HWND) {
     unsafe {
         let cfg = AppConfig::load();
         let now = Local::now();
         let today = now.weekday().num_days_from_monday() as usize;
 
-        let status_wide: Vec<u16> = format!("{}\0", current_status(&cfg)).encode_utf16().collect();
-        SetWindowTextW(ctx.status, status_wide.as_ptr());
+        set_text(ctx.status, &current_status(&cfg));
+        set_text(ctx.today_title, &today_title_text());
+        set_text(ctx.today_ranges, &today_ranges_text(&cfg));
+        set_text(ctx.tomorrow, &tomorrow_text(&cfg));
 
         for i in 0..7 {
             let marker = if i == today { "> " } else { "    " };
-            let line = format!("{}{}: {}\0", marker, WEEKDAY_FULL[i], describe_day(&cfg, i));
-            let wide: Vec<u16> = line.encode_utf16().collect();
-            SetWindowTextW(ctx.rows[i], wide.as_ptr());
+            let line = format!("{}{}: {}", marker, WEEKDAY_FULL[i], describe_day(&cfg, i));
+            set_text(ctx.rows[i], &line);
+            // Emphasize today so the eye lands there first.
+            let f = if i == today {
+                ctx.font_bold
+            } else {
+                ctx.font_normal
+            };
+            SendMessageW(ctx.rows[i], WM_SETFONT, f as _, 1);
         }
+
+        // Repaint the clock timetable (now-marker + colors).
+        InvalidateRect(hwnd, null_mut(), 1);
     }
 }
 
@@ -186,9 +378,13 @@ unsafe extern "system" fn viewer_wnd_proc(
     unsafe {
         let ctx_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ViewerContext;
         match msg {
+            WM_PAINT => {
+                paint_timeline(hwnd);
+                0
+            }
             WM_TIMER => {
                 if wparam == ID_TIMER_REFRESH && !ctx_ptr.is_null() {
-                    refresh(&*ctx_ptr);
+                    refresh(&*ctx_ptr, hwnd);
                 }
                 0
             }
@@ -231,8 +427,8 @@ fn main() {
         wc.lpszClassName = class_name.as_ptr();
         RegisterClassExW(&wc);
 
-        let width = 640;
-        let height = 520;
+        let width = 700;
+        let height = 710;
         let x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
         let y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
 
@@ -256,6 +452,9 @@ fn main() {
 
         let font = create_ui_font(14, false);
         let font_bold = create_ui_font(15, true);
+        let font_today_title = create_ui_font(21, true);
+        let font_ranges = create_ui_font(16, true);
+        let font_small = create_ui_font(13, false);
 
         let static_class: Vec<u16> = "STATIC\0".encode_utf16().collect();
         let btn_class: Vec<u16> = "BUTTON\0".encode_utf16().collect();
@@ -266,9 +465,57 @@ fn main() {
             [0u16].as_ptr(),
             WS_CHILD | WS_VISIBLE,
             24,
-            16,
-            592,
+            12,
+            632,
             26,
+            hwnd,
+            null_mut(),
+            hinstance,
+            null_mut(),
+        );
+
+        // Big "오늘 9월 18일 목요일" headline — no weekday hunting.
+        let today_title = CreateWindowExW(
+            0,
+            static_class.as_ptr(),
+            [0u16].as_ptr(),
+            WS_CHILD | WS_VISIBLE,
+            24,
+            42,
+            632,
+            32,
+            hwnd,
+            null_mut(),
+            hinstance,
+            null_mut(),
+        );
+
+        // Timeline bar itself is painted in WM_PAINT between y=88..180.
+
+        let today_ranges = CreateWindowExW(
+            0,
+            static_class.as_ptr(),
+            [0u16].as_ptr(),
+            WS_CHILD | WS_VISIBLE,
+            24,
+            192,
+            632,
+            28,
+            hwnd,
+            null_mut(),
+            hinstance,
+            null_mut(),
+        );
+
+        let tomorrow = CreateWindowExW(
+            0,
+            static_class.as_ptr(),
+            [0u16].as_ptr(),
+            WS_CHILD | WS_VISIBLE,
+            24,
+            222,
+            632,
+            24,
             hwnd,
             null_mut(),
             hinstance,
@@ -282,9 +529,9 @@ fn main() {
             grp_title.as_ptr(),
             WS_CHILD | WS_VISIBLE | (BS_GROUPBOX as u32),
             16,
-            52,
-            608,
-            330,
+            252,
+            648,
+            316,
             hwnd,
             null_mut(),
             hinstance,
@@ -299,8 +546,8 @@ fn main() {
                 [0u16].as_ptr(),
                 WS_CHILD | WS_VISIBLE,
                 36,
-                80 + (i as i32) * 40,
-                570,
+                278 + (i as i32) * 38,
+                610,
                 24,
                 hwnd,
                 null_mut(),
@@ -316,8 +563,8 @@ fn main() {
             note.as_ptr(),
             WS_CHILD | WS_VISIBLE,
             24,
-            394,
-            592,
+            576,
+            632,
             24,
             hwnd,
             null_mut(),
@@ -331,8 +578,8 @@ fn main() {
             btn_class.as_ptr(),
             close_txt.as_ptr(),
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_DEFPUSHBUTTON as u32),
-            500,
-            428,
+            540,
+            608,
             116,
             36,
             hwnd,
@@ -343,11 +590,22 @@ fn main() {
 
         set_control_fonts(hwnd, font);
         SendMessageW(status, WM_SETFONT, font_bold as _, 1);
+        SendMessageW(today_title, WM_SETFONT, font_today_title as _, 1);
+        SendMessageW(today_ranges, WM_SETFONT, font_ranges as _, 1);
+        SendMessageW(tomorrow, WM_SETFONT, font_small as _, 1);
 
-        let ctx = Box::into_raw(Box::new(ViewerContext { status, rows }));
+        let ctx = Box::into_raw(Box::new(ViewerContext {
+            status,
+            today_title,
+            today_ranges,
+            tomorrow,
+            rows,
+            font_normal: font,
+            font_bold,
+        }));
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, ctx as isize);
 
-        refresh(&*ctx);
+        refresh(&*ctx, hwnd);
         SetTimer(hwnd, ID_TIMER_REFRESH, REFRESH_MS, None);
 
         ShowWindow(hwnd, SW_SHOW);
@@ -437,5 +695,15 @@ mod tests {
             describe_day(&cfg, 2),
             "00:00 - 12:00,  13:00 - 23:00"
         );
+    }
+
+    #[test]
+    fn viewer_today_text_wraps_description() {
+        let cfg = sample_cfg();
+        // Monday description embedded in both helpers.
+        let mon_desc = describe_day(&cfg, 0);
+        assert!(lang::viewer_today_ranges(&mon_desc).contains(&mon_desc));
+        assert!(lang::viewer_tomorrow("X", &mon_desc).contains(&mon_desc));
+        assert!(!today_date_str(Local::now()).is_empty());
     }
 }

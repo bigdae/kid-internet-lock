@@ -497,14 +497,14 @@ pub fn err_running(detail: &str) -> String {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "ko")]
-pub const VIEWER_TITLE: &str = "인터넷 사용 가능 시간";
+pub const VIEWER_TITLE: &str = "인터넷 사용 가능 시간 - 오늘";
 #[cfg(not(feature = "ko"))]
-pub const VIEWER_TITLE: &str = "Internet Time - Weekly Schedule";
+pub const VIEWER_TITLE: &str = "Internet Time - Today";
 
 #[cfg(feature = "ko")]
-pub const VIEWER_GROUP: &str = " 인터넷 사용 가능 시간 ";
+pub const VIEWER_GROUP: &str = " 요일별 사용 가능 시간 ";
 #[cfg(not(feature = "ko"))]
-pub const VIEWER_GROUP: &str = " Internet available times ";
+pub const VIEWER_GROUP: &str = " Weekly available times ";
 
 #[cfg(feature = "ko")]
 pub const AVAILABLE_ALL_DAY: &str = "종일 사용 가능";
@@ -545,7 +545,53 @@ pub const VIEWER_ALL_WEEK_BLOCKED: &str = "인터넷 주간 종일 차단";
 pub const VIEWER_ALL_WEEK_BLOCKED: &str = "Internet blocked all week";
 
 #[cfg(feature = "ko")]
-pub const VIEWER_NOTE: &str = "위 시간에 인터넷을 사용할 수 있습니다. 나머지 시간은 차단됩니다.";
+pub const VIEWER_NOTE: &str = "초록색 시간에 인터넷을 사용할 수 있습니다. 빨간색은 차단됩니다.";
 #[cfg(not(feature = "ko"))]
 pub const VIEWER_NOTE: &str =
-    "The times above are when the internet works. Everything else is blocked.";
+    "Green means the internet works. Red means blocked.";
+
+// ---------------------------------------------------------------------------
+// Kid schedule viewer: today-focused clock timetable
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "ko")]
+pub fn viewer_today_title(date: &str, weekday: &str) -> String {
+    format!("오늘 {date} {weekday}")
+}
+#[cfg(not(feature = "ko"))]
+pub fn viewer_today_title(date: &str, weekday: &str) -> String {
+    format!("Today, {weekday} {date}")
+}
+
+#[cfg(feature = "ko")]
+pub fn viewer_today_ranges(ranges: &str) -> String {
+    format!("오늘 사용 가능: {ranges}")
+}
+#[cfg(not(feature = "ko"))]
+pub fn viewer_today_ranges(ranges: &str) -> String {
+    format!("Available today: {ranges}")
+}
+
+#[cfg(feature = "ko")]
+pub fn viewer_tomorrow(weekday: &str, ranges: &str) -> String {
+    format!("내일({weekday}): {ranges}")
+}
+#[cfg(not(feature = "ko"))]
+pub fn viewer_tomorrow(weekday: &str, ranges: &str) -> String {
+    format!("Tomorrow ({weekday}): {ranges}")
+}
+
+#[cfg(feature = "ko")]
+pub const VIEWER_LEGEND_AVAILABLE: &str = "사용 가능";
+#[cfg(not(feature = "ko"))]
+pub const VIEWER_LEGEND_AVAILABLE: &str = "Available";
+
+#[cfg(feature = "ko")]
+pub const VIEWER_LEGEND_BLOCKED: &str = "차단";
+#[cfg(not(feature = "ko"))]
+pub const VIEWER_LEGEND_BLOCKED: &str = "Blocked";
+
+#[cfg(feature = "ko")]
+pub const VIEWER_LEGEND_NOW: &str = "지금";
+#[cfg(not(feature = "ko"))]
+pub const VIEWER_LEGEND_NOW: &str = "Now";
