@@ -59,6 +59,7 @@ const ID_BATCH1_BASE: usize = 310;
 const ID_BATCH2_BASE: usize = 314;
 const ID_BTN_APPLY_SLOT1: usize = 318;
 const ID_BTN_APPLY_SLOT2: usize = 319;
+const ID_BTN_WALLPAPER: usize = 320;
 
 const EN_KILLFOCUS: u32 = 0x0200;
 const EM_SETLIMITTEXT: u32 = 0x00C5;
@@ -150,6 +151,67 @@ unsafe fn update_status_text(ctx: &SettingsContext) {
             .encode_utf16()
             .collect();
         SetWindowTextW(ctx.label_status, text_wide.as_ptr());
+    }
+}
+
+/// Validates the dialog edits and stores them into the shared config.
+/// Shows an error dialog and returns false when any field is invalid.
+/// When `announce` is set, a success dialog is shown as well.
+unsafe fn save_settings_from_dialog(ctx: &SettingsContext, hwnd: HWND, announce: bool) -> bool {
+    unsafe {
+        let mut parsed_days = [(false, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32); 7];
+        for i in 0..7 {
+            let slot1 = parse_hm(ctx.edit_start_h[i], ctx.edit_start_m[i]);
+            let slot1_end = parse_hm(ctx.edit_end_h[i], ctx.edit_end_m[i]);
+            let slot2 = parse_hm(ctx.edit_start2_h[i], ctx.edit_start2_m[i]);
+            let slot2_end = parse_hm(ctx.edit_end2_h[i], ctx.edit_end2_m[i]);
+
+            let ((sh, sm), (eh, em), (sh2, sm2), (eh2, em2)) =
+                match (slot1, slot1_end, slot2, slot2_end) {
+                    (Some(s), Some(e), Some(s2), Some(e2)) => (s, e, s2, e2),
+                    _ => {
+                        let title: Vec<u16> = format!("{}\0", lang::TITLE_INPUT_ERROR).encode_utf16().collect();
+                        let msg: Vec<u16> = format!("{}\0", lang::weekly_error(WEEKDAY_FULL[i]))
+                            .encode_utf16()
+                            .collect();
+                        MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
+                        return false;
+                    }
+                };
+
+            let enabled = SendMessageW(ctx.chk_days[i], BM_GETCHECK, 0, 0) == 1;
+            parsed_days[i] = (enabled, sh, sm, eh, em, sh2, sm2, eh2, em2);
+        }
+
+        let auto_start = SendMessageW(ctx.chk_autostart, BM_GETCHECK, 0, 0) == 1;
+
+        {
+            let mut state = ctx.shared_state.lock().unwrap();
+            for (i, (enabled, sh, sm, eh, em, sh2, sm2, eh2, em2)) in parsed_days.iter().enumerate() {
+                state.config.weekly_schedule[i].enabled = *enabled;
+                state.config.weekly_schedule[i].start_hour = *sh;
+                state.config.weekly_schedule[i].start_minute = *sm;
+                state.config.weekly_schedule[i].end_hour = *eh;
+                state.config.weekly_schedule[i].end_minute = *em;
+                state.config.weekly_schedule[i].start2_hour = *sh2;
+                state.config.weekly_schedule[i].start2_minute = *sm2;
+                state.config.weekly_schedule[i].end2_hour = *eh2;
+                state.config.weekly_schedule[i].end2_minute = *em2;
+            }
+            state.config.sync_legacy_from_weekly();
+            state.config.auto_start = auto_start;
+
+            let _ = state.config.save();
+            let _ = state.config.sync_autostart();
+            state.evaluate_and_sync();
+        }
+
+        if announce {
+            let title: Vec<u16> = format!("{}\0", lang::TITLE_SAVED).encode_utf16().collect();
+            let msg: Vec<u16> = format!("{}\0", lang::MSG_SAVED).encode_utf16().collect();
+            MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
+        }
+        true
     }
 }
 
@@ -310,57 +372,30 @@ unsafe extern "system" fn settings_wnd_proc(
                         0
                     }
                     ID_BTN_SAVE => {
-                        let mut parsed_days = [(false, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32); 7];
-                        for i in 0..7 {
-                            let slot1 = parse_hm(ctx.edit_start_h[i], ctx.edit_start_m[i]);
-                            let slot1_end = parse_hm(ctx.edit_end_h[i], ctx.edit_end_m[i]);
-                            let slot2 = parse_hm(ctx.edit_start2_h[i], ctx.edit_start2_m[i]);
-                            let slot2_end = parse_hm(ctx.edit_end2_h[i], ctx.edit_end2_m[i]);
-
-                            let ((sh, sm), (eh, em), (sh2, sm2), (eh2, em2)) =
-                                match (slot1, slot1_end, slot2, slot2_end) {
-                                    (Some(s), Some(e), Some(s2), Some(e2)) => (s, e, s2, e2),
-                                    _ => {
-                                        let title: Vec<u16> = format!("{}\0", lang::TITLE_INPUT_ERROR).encode_utf16().collect();
-                                let msg: Vec<u16> = format!("{}\0", lang::weekly_error(WEEKDAY_FULL[i]))
-                                        .encode_utf16()
-                                        .collect();
-                                        MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
-                                        return 0;
-                                    }
-                                };
-
-                            let enabled = SendMessageW(ctx.chk_days[i], BM_GETCHECK, 0, 0) == 1;
-                            parsed_days[i] = (enabled, sh, sm, eh, em, sh2, sm2, eh2, em2);
+                        if save_settings_from_dialog(ctx, hwnd, true) {
+                            update_status_text(ctx);
                         }
-
-                        let auto_start = SendMessageW(ctx.chk_autostart, BM_GETCHECK, 0, 0) == 1;
-
-                        {
-                            let mut state = ctx.shared_state.lock().unwrap();
-                            for (i, (enabled, sh, sm, eh, em, sh2, sm2, eh2, em2)) in parsed_days.iter().enumerate() {
-                                state.config.weekly_schedule[i].enabled = *enabled;
-                                state.config.weekly_schedule[i].start_hour = *sh;
-                                state.config.weekly_schedule[i].start_minute = *sm;
-                                state.config.weekly_schedule[i].end_hour = *eh;
-                                state.config.weekly_schedule[i].end_minute = *em;
-                                state.config.weekly_schedule[i].start2_hour = *sh2;
-                                state.config.weekly_schedule[i].start2_minute = *sm2;
-                                state.config.weekly_schedule[i].end2_hour = *eh2;
-                                state.config.weekly_schedule[i].end2_minute = *em2;
+                        0
+                    }
+                    ID_BTN_WALLPAPER => {
+                        // One click: validate + save, then render the schedule
+                        // image and set it as the desktop wallpaper.
+                        if save_settings_from_dialog(ctx, hwnd, false) {
+                            let cfg = ctx.shared_state.lock().unwrap().config.clone();
+                            match crate::wallpaper::apply_schedule_wallpaper(&cfg) {
+                                Ok(_) => {
+                                    let title: Vec<u16> = format!("{}\0", lang::TITLE_SAVED).encode_utf16().collect();
+                                    let msg: Vec<u16> = format!("{}\0", lang::MSG_WALLPAPER_OK).encode_utf16().collect();
+                                    MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
+                                }
+                                Err(e) => {
+                                    let title: Vec<u16> = format!("{}\0", lang::TITLE_ERROR).encode_utf16().collect();
+                                    let msg: Vec<u16> = format!("{}\0", lang::wallpaper_failed(&e)).encode_utf16().collect();
+                                    MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
+                                }
                             }
-                            state.config.sync_legacy_from_weekly();
-                            state.config.auto_start = auto_start;
-
-                            let _ = state.config.save();
-                            let _ = state.config.sync_autostart();
-                            state.evaluate_and_sync();
+                            update_status_text(ctx);
                         }
-
-                        let title: Vec<u16> = format!("{}\0", lang::TITLE_SAVED).encode_utf16().collect();
-                        let msg: Vec<u16> = format!("{}\0", lang::MSG_SAVED).encode_utf16().collect();
-                        MessageBoxW(hwnd, msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
-                        update_status_text(ctx);
                         0
                     }
                     ID_BTN_CLOSE => {
@@ -698,6 +733,22 @@ pub fn open_settings_dialog(shared_state: SharedAppState) {
         // -------------------------------------------------------------
         // Bottom Action Buttons
         // -------------------------------------------------------------
+        let wallpaper_txt: Vec<u16> = format!("{}\0", lang::BTN_WALLPAPER).encode_utf16().collect();
+        CreateWindowExW(
+            0,
+            btn_class.as_ptr(),
+            wallpaper_txt.as_ptr(),
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32),
+            276,
+            723,
+            210,
+            36,
+            hwnd,
+            ID_BTN_WALLPAPER as _,
+            hinstance,
+            null_mut(),
+        );
+
         let save_txt: Vec<u16> = format!("{}\0", lang::BTN_SAVE).encode_utf16().collect();
         let btn_save = CreateWindowExW(
             0,

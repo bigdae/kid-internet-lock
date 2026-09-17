@@ -10,6 +10,7 @@ mod service;
 mod single_instance;
 mod tray;
 mod ui;
+mod wallpaper;
 mod watchdog;
 
 use config::AppConfig;
