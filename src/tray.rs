@@ -1,5 +1,6 @@
 use crate::firewall::FirewallManager;
 use crate::icon::DynamicIcons;
+use crate::lang;
 use crate::scheduler::{SharedAppState, StatusDetail};
 use crate::ui::password_dialog::prompt_admin_password;
 use crate::ui::settings_dialog::open_settings_dialog;
@@ -105,36 +106,36 @@ unsafe extern "system" fn tray_wnd_proc(
                         };
 
                         let status_label = if is_blocked {
-                            "Kid Internet Lock [🔴 Internet Blocked]\0"
+                            lang::TRAY_STATUS_BLOCKED
                         } else {
-                            "Kid Internet Lock [🟢 Internet Allowed]\0"
+                            lang::TRAY_STATUS_ALLOWED
                         };
-                        let status_wide: Vec<u16> = status_label.encode_utf16().collect();
+                        let status_wide: Vec<u16> = format!("{}\0", status_label).encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING | MF_GRAYED | MF_DISABLED, 0, status_wide.as_ptr());
                         AppendMenuW(hmenu, MF_SEPARATOR, 0, null_mut());
 
-                        let t30: Vec<u16> = "Allow 30 Minutes\0".encode_utf16().collect();
+                        let t30: Vec<u16> = format!("{}\0", lang::BTN_ALLOW_30).encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_TEMP_30, t30.as_ptr());
 
-                        let t60: Vec<u16> = "Allow 1 Hour\0".encode_utf16().collect();
+                        let t60: Vec<u16> = format!("{}\0", lang::BTN_ALLOW_60).encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_TEMP_60, t60.as_ptr());
 
                         if has_temp_allow {
-                            let tcancel: Vec<u16> = "Cancel Temporary Allow\0".encode_utf16().collect();
+                            let tcancel: Vec<u16> = format!("{}\0", lang::BTN_TEMP_CANCEL).encode_utf16().collect();
                             AppendMenuW(hmenu, MF_STRING, CMD_TEMP_CANCEL, tcancel.as_ptr());
                         }
 
                         AppendMenuW(hmenu, MF_SEPARATOR, 0, null_mut());
 
-                        let toggle_txt: Vec<u16> = "Block / Unblock Now\0".encode_utf16().collect();
+                        let toggle_txt: Vec<u16> = format!("{}\0", lang::BTN_TOGGLE).encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_TOGGLE_NOW, toggle_txt.as_ptr());
 
-                        let settings_txt: Vec<u16> = "Admin Settings (S)...\0".encode_utf16().collect();
+                        let settings_txt: Vec<u16> = format!("{}\0", lang::MENU_SETTINGS).encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_SETTINGS, settings_txt.as_ptr());
 
                         AppendMenuW(hmenu, MF_SEPARATOR, 0, null_mut());
 
-                        let exit_txt: Vec<u16> = "Exit (X)\0".encode_utf16().collect();
+                        let exit_txt: Vec<u16> = format!("{}\0", lang::MENU_EXIT).encode_utf16().collect();
                         AppendMenuW(hmenu, MF_STRING, CMD_EXIT, exit_txt.as_ptr());
 
                         SetForegroundWindow(hwnd);
@@ -146,7 +147,7 @@ unsafe extern "system" fn tray_wnd_proc(
                         let state = ctx.shared_state.lock().unwrap();
                         state.config.clone()
                     };
-                    if prompt_admin_password(null_mut(), &config, "Kid Internet Lock - Admin Authentication") {
+                    if prompt_admin_password(null_mut(), &config, lang::AUTH_TITLE_ADMIN) {
                         open_settings_dialog(ctx.shared_state.clone());
                     }
                 }
@@ -165,7 +166,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "Allow 30 Minutes - Admin Authentication") {
+                        if prompt_admin_password(null_mut(), &config, &lang::auth_title(lang::BTN_ALLOW_30)) {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.set_temporary_allow(30);
@@ -179,7 +180,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "Allow 1 Hour - Admin Authentication") {
+                        if prompt_admin_password(null_mut(), &config, &lang::auth_title(lang::BTN_ALLOW_60)) {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.set_temporary_allow(60);
@@ -193,7 +194,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "Cancel Temporary Allow - Admin Authentication") {
+                        if prompt_admin_password(null_mut(), &config, &lang::auth_title(lang::BTN_TEMP_CANCEL)) {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.cancel_temporary_allow();
@@ -208,7 +209,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "Block / Unblock Now - Admin Authentication") {
+                        if prompt_admin_password(null_mut(), &config, &lang::auth_title(lang::BTN_TOGGLE)) {
                             {
                                 let mut state = ctx.shared_state.lock().unwrap();
                                 state.toggle_manual_override();
@@ -222,7 +223,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             let state = ctx.shared_state.lock().unwrap();
                             state.config.clone()
                         };
-                        if prompt_admin_password(null_mut(), &config, "Kid Internet Lock - Settings Authentication") {
+                        if prompt_admin_password(null_mut(), &config, lang::AUTH_TITLE_SETTINGS) {
                             open_settings_dialog(ctx.shared_state.clone());
                         }
                     }
@@ -232,7 +233,7 @@ unsafe extern "system" fn tray_wnd_proc(
                             state.config.clone()
                         };
                         // Per requirements: must authenticate to exit so children cannot close it
-                        if prompt_admin_password(null_mut(), &config, "Kid Internet Lock - Exit Authentication") {
+                        if prompt_admin_password(null_mut(), &config, lang::AUTH_TITLE_EXIT) {
                             // Intentional exit: stop watchdog tasks and auto-restart guard
                             watchdog::stop_guardian();
                             // Safely restore firewall before normal exit

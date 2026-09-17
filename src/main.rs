@@ -4,6 +4,7 @@ mod admin;
 mod config;
 mod firewall;
 mod icon;
+mod lang;
 mod scheduler;
 mod service;
 mod single_instance;
@@ -51,8 +52,8 @@ fn main() {
         }
         if !admin::relaunch_as_admin() {
             unsafe {
-                let title: Vec<u16> = "Administrator Rights Required\0".encode_utf16().collect();
-                let msg: Vec<u16> = "Kid Internet Lock needs administrator rights to control Windows Firewall.\nPlease choose 'Run as administrator'.\0"
+                let title: Vec<u16> = format!("{}\0", lang::TITLE_ADMIN_REQUIRED).encode_utf16().collect();
+                let msg: Vec<u16> = format!("{}\0", lang::MSG_ADMIN_REQUIRED)
                     .encode_utf16()
                     .collect();
                 MessageBoxW(null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);
@@ -67,8 +68,8 @@ fn main() {
         None => {
             if !silent {
                 unsafe {
-                    let title: Vec<u16> = "Notice\0".encode_utf16().collect();
-                    let msg: Vec<u16> = "Kid Internet Lock is already running.\nPlease check the tray icon in the bottom-right corner of the taskbar.\0"
+                    let title: Vec<u16> = format!("{}\0", lang::TITLE_NOTICE).encode_utf16().collect();
+                    let msg: Vec<u16> = format!("{}\0", lang::MSG_ALREADY_RUNNING)
                         .encode_utf16()
                         .collect();
                     MessageBoxW(null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION);
@@ -94,8 +95,8 @@ fn main() {
     // 6. Run system tray loop
     if let Err(err) = tray::run_tray_app(shared_state) {
         unsafe {
-            let title: Vec<u16> = "Error\0".encode_utf16().collect();
-            let msg: Vec<u16> = format!("An error occurred while running the application:\n{}\0", err)
+            let title: Vec<u16> = format!("{}\0", lang::TITLE_ERROR).encode_utf16().collect();
+            let msg: Vec<u16> = format!("{}\0", lang::err_running(&err))
                 .encode_utf16()
                 .collect();
             MessageBoxW(null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK | MB_ICONWARNING);

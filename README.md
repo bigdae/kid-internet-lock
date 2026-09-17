@@ -1,158 +1,44 @@
 # 🌙 Kid Internet Lock
 
-> A lightweight Windows system-tray application that automatically blocks the internet during set late-night hours to help prevent kids from staying online too late.
-> Written **100% in Rust** with no Python runtime or external DLL dependencies — it ships as a **single standalone executable (~0.5 MB)**.
+> 아이의 심야 인터넷을 자동으로 차단해 주는 가벼운 Windows 프로그램.
+> Rust 100% 단일 실행 파일(약 0.6 MB), 설치 불필요.
 
 ---
 
-## 📌 Features
+## 왜 쓰나요?
 
-1. **Scheduled nightly internet blocking**
-   - Default block window: **00:00 – 07:00** every night
-   - Windows crossing midnight (e.g. 23:30 – 06:30) are fully supported
-   - Blocking starts automatically at the configured time and is lifted automatically when the window ends
+- 밤 12시 넘도록 유튜브 보는 아이, 말로만 타일러봤자 소용없다면
+- 정해둔 시간이 되면 인터넷이 **알아서 끊기고**, 끝나면 **알아서 풀립니다**
+- 아이는 언제 되는지 `InternetSchedule.exe` 하나로 바로 확인 가능
 
-2. **Windows system-tray resident**
-   - Lives in the notification area (next to the clock) without covering the screen
-   - Live status icons: 🟢 internet allowed / 🔴 internet blocked
-   - Hover tooltip shows the current state and the next block/release time
+## 주요 기능
 
-3. **Admin authentication and security**
-   - Default password: `1q2w3e`
-   - Authentication is required to open settings, grant temporary access, toggle blocking, or exit the app
-   - Passwords are stored as salted SHA-256 hashes
-   - Password fields **always accept English input** — the Korean IME is detached from password boxes, so there is no Hangul/English toggle to worry about
+- 📅 **요일별 차단 시간 (1일 2개 시간대)** — 월~일 각각 다르게 설정, 자정 넘김(예: 23:00–07:00) 지원
+- ⚡ **일괄 입력** — 한 번 입력해서 전체 요일에 복사
+- 🟢🔴 **트레이 상주** — 아이콘 색으로 상태 확인, 툴팁에 다음 차단/해제 시간 표시
+- 🔑 **관리자 비밀번호** — 설정·임시 허용·종료 모두 비밀번호 필요 (기본값 `1q2w3e`)
+- ⏱️ **임시 허용 30분 / 1시간** — 숙제 등 급할 때만 잠깐 풀기
+- 🛡️ **끄기 방지** — 작업 관리자로 못 끄게 가드 서비스 + 워치독이 되살림
+- 👶 **아이용 시간표 뷰어** (`InternetSchedule.exe`) — "지금 되는지, 언제 되는지" 읽기 전용 화면
+- 🌐 **한글/영어 UI** — `build.bat`가 윈도우 언어에 맞춰 자동 선택
 
-4. **Tamper-resistant**
-   - Cannot be terminated from Task Manager: a privileged Windows service (`KidInternetLockGuard`) relaunches the app within about a second
-   - Backed by a hidden in-session watchdog process (~2 s recovery) and a scheduled task (~10 s recovery) so it comes back even if every process is killed at once
-   - The app can only be closed through the password-protected tray menu, and a normal exit removes all guard mechanisms
+## 사용법
 
-5. **Friendly admin settings UI**
-   - Change block start/end times (hour/minute)
-   - Temporary allow for 30 or 60 minutes (for emergencies or homework)
-   - "Block / unblock now" manual toggle
-   - Change the admin password
-   - Register/unregister auto-start at Windows logon (Windows Task Scheduler with `HighestAvailable` privileges, eliminating UAC prompts at boot)
+1. `KidInternetLock.exe` 실행 → UAC 허용 (방화벽 제어에 관리자 권한 필요)
+2. 트레이 아이콘 우클릭 → **관리자 설정** (비밀번호 `1q2w3e`) → 요일별 시간 입력 → **설정 저장**
+3. 아이 PC에는 `InternetSchedule.exe` 바로가기를 만들어 주면 끝
 
-6. **Reliable blocking mechanism**
-   - Controls Windows Firewall outbound rules instead of powering off network hardware (Wi-Fi/LAN)
-   - Automatically enables the Windows Firewall profiles (domain/private/public) before applying rules, so blocking also works on public networks where the firewall had been turned off
-   - Applies in about a second with no Wi-Fi reconnection delay
-   - Rules stay in place even if the app is killed mid-window, so they cannot be bypassed
-   - On a normal exit the rules are removed after admin authentication
+## 직접 빌드하기
 
----
-
-## 🛠 Architecture
-
-```mermaid
-flowchart TD
-    TrayIcon["System tray icon (notification area)"]
-    TrayIcon -->|Right click| Menu["Context menu"]
-    Menu -->|Settings| PwdPrompt["Password prompt (default: 1q2w3e)"]
-    PwdPrompt -->|Authenticated| SettingsUI["Admin settings UI"]
-    Menu -->|Exit| ExitPrompt["Exit password prompt"]
-    ExitPrompt -->|Authenticated| SafeExit["Remove guard service/task, restore firewall, exit"]
-
-    Scheduler["Background scheduler (5 s tick)"]
-    Scheduler -->|Check time| RuleManager["Firewall block engine (netsh advfirewall)"]
-    RuleManager -->|Night window| BlockNet["Outbound block rule on (🔴 red icon)"]
-    RuleManager -->|Daytime / temp allow| AllowNet["Outbound block rule off (🟢 green icon)"]
-
-    GuardService["Windows service: KidInternetLockGuard"]
-    Watchdog["Hidden watchdog process"]
-    GuardTask["Scheduled task: KidInternetLock_Guard"]
-    GuardService -->|Revive in about 1 s| TrayIcon
-    Watchdog -->|Revive in about 2 s| TrayIcon
-    GuardTask -->|Revive in about 10 s| TrayIcon
-```
-
----
-
-## 📂 Project layout (Rust)
-
-| File / Directory | Description |
-| :--- | :--- |
-| `src/main.rs` | Entry point: CLI modes (`--service`, `--watchdog`, `--silent`), single-instance mutex, UAC elevation |
-| `src/tray.rs` | Win32 system-tray icon, mouse events, context menu, message loop, exit flow |
-| `src/firewall.rs` | Windows Firewall outbound block/unblock engine (`netsh advfirewall`) including profile auto-enable |
-| `src/scheduler.rs` | Block-window evaluation (midnight crossing support), temporary allow, manual override, apply/retry logic |
-| `src/config.rs` | Configuration load/save (`config.json`), SHA-256 salted password hashing, autostart registry |
-| `src/icon.rs` | High-resolution green/red status icons rendered with GDI (no image files) |
-| `src/admin.rs` | Administrator privilege check and `runas` self-elevation |
-| `src/single_instance.rs` | System-wide `CreateMutexW` single-instance guard |
-| `src/watchdog.rs` | Hidden mutual watchdog process and keep-alive scheduled task |
-| `src/service.rs` | `KidInternetLockGuard` Windows service that instantly revives the app |
-| `src/ui/mod.rs` | UI module declarations |
-| `src/ui/font.rs` | Applies the Malgun Gothic UI font to controls |
-| `src/ui/ime.rs` | Detaches the IME so password fields always receive English input |
-| `src/ui/password_dialog.rs` | Modal admin password dialog (masking, Enter/Esc shortcuts) |
-| `src/ui/settings_dialog.rs` | Admin settings window: schedule, temporary allow, manual control, password change, autostart |
-| `app.manifest` | Windows application manifest (Windows 10/11 compatibility, DPI awareness) |
-| `build.rs` | Windows resource/manifest build script |
-| `Cargo.toml` | Rust dependencies and package metadata |
-| `run.bat` | Convenience launcher |
-| `build.bat` | Release build script that produces `KidInternetLock.exe` |
-
----
-
-## 🚀 Usage
-
-1. **Run**
-   - Download `KidInternetLock.exe` from the [Releases page](../../releases/latest) and double-click it (or build it yourself and use `run.bat`).
-   - Approve the **UAC (User Account Control)** prompt — administrator rights are required to control Windows Firewall.
-   - If the app is already running, a notice appears asking you to check the tray area; duplicates are prevented.
-
-2. **Tray**
-   - A green shield icon appears in the notification area (bottom-right, next to the clock).
-   - Hover over it to see the current state and the next block time.
-   - Double-click the icon (or right-click ➔ settings) to authenticate and open settings.
-
-3. **Settings**
-   - Right-click the tray icon ➔ **[Admin Settings (S)...]**
-   - Enter the password (default `1q2w3e`) and press Enter.
-   - Configure the block window, change the password, and enable/disable auto-start.
-
-4. **Temporary allow**
-   - Right-click the tray icon ➔ **[Allow 30 Minutes]** or **[Allow 1 Hour]**
-   - Authenticate and the internet is temporarily allowed even during the block window.
-
-5. **Exit**
-   - Right-click the tray icon ➔ **[Exit (X)]** ➔ enter the admin password.
-   - On exit, the guard service, watchdog and scheduled task are removed, and the firewall rules are restored.
-
-### Notes and troubleshooting
-
-- The app enables the Windows Firewall profiles while blocking. If the firewall was off, it is turned back on automatically so the rules take effect. Windows Firewall does not terminate connections that were already established, so an app that is already online may keep working for a short while — close and reopen it to test.
-- If blocking fails (e.g. security policy blocks firewall changes), the tooltip and settings window show **⚠️ Failed to apply firewall rule**, and the app keeps retrying.
-- To remove the guard components manually from an elevated command prompt:
-  ```
-  sc delete KidInternetLockGuard
-  schtasks /Delete /F /TN KidInternetLock_Guard
-  ```
-- If the executable is moved or deleted, the scheduled task and service point to the old path; remove them with the commands above.
-
----
-
-## 🧱 Building from source
-
-Requirements: Windows and a recent stable Rust toolchain (edition 2024).
+관리자 권한 터미널에서:
 
 ```
 build.bat
 ```
 
-or
+영어판 강제 빌드: `cargo build --release`
 
-```
-cargo build --release
-```
+## 알아두기
 
-The output is `target\release\kid_internet_lock.exe`; `build.bat` also copies it to `KidInternetLock.exe`.
-
----
-
-## ⚠️ Disclaimer
-
-This tool is intended for parents to manage their own computers and home networks. Use it only on devices you own or are responsible for.
+- 차단 중이어도 이미 연결된 영상은 잠시 이어질 수 있어요. 앱을 껐다 켜면 바로 적용됩니다
+- 종료도 비밀번호가 있어야 합니다. 정상 종료하면 방화벽 규칙까지 깨끗이 복원됩니다

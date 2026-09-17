@@ -14,6 +14,150 @@ const DEFAULT_PASSWORD: &str = "1q2w3e";
 const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const RUN_VALUE_NAME: &str = "KidInternetLock";
 
+fn default_day_enabled() -> bool {
+    true
+}
+
+fn default_end_hour() -> u32 {
+    7
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct DaySchedule {
+    #[serde(default = "default_day_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub start_hour: u32,
+    #[serde(default)]
+    pub start_minute: u32,
+    #[serde(default = "default_end_hour")]
+    pub end_hour: u32,
+    #[serde(default)]
+    pub end_minute: u32,
+    /// Second block window of the day. Unused when start equals end.
+    #[serde(default)]
+    pub start2_hour: u32,
+    #[serde(default)]
+    pub start2_minute: u32,
+    #[serde(default)]
+    pub end2_hour: u32,
+    #[serde(default)]
+    pub end2_minute: u32,
+}
+
+impl Default for DaySchedule {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            start_hour: 0,
+            start_minute: 0,
+            end_hour: 7,
+            end_minute: 0,
+            start2_hour: 0,
+            start2_minute: 0,
+            end2_hour: 0,
+            end2_minute: 0,
+        }
+    }
+}
+
+impl DaySchedule {
+    pub fn start_minutes(&self) -> u32 {
+        self.start_hour * 60 + self.start_minute
+    }
+
+    pub fn end_minutes(&self) -> u32 {
+        self.end_hour * 60 + self.end_minute
+    }
+
+    pub fn start2_minutes(&self) -> u32 {
+        self.start2_hour * 60 + self.start2_minute
+    }
+
+    pub fn end2_minutes(&self) -> u32 {
+        self.end2_hour * 60 + self.end2_minute
+    }
+
+    fn slot_active(&self, start: u32, end: u32) -> bool {
+        self.enabled && start != end
+    }
+
+    pub fn slot1(&self) -> Option<(u32, u32)> {
+        let (s, e) = (self.start_minutes(), self.end_minutes());
+        if self.slot_active(s, e) {
+            Some((s, e))
+        } else {
+            None
+        }
+    }
+
+    pub fn slot2(&self) -> Option<(u32, u32)> {
+        let (s, e) = (self.start2_minutes(), self.end2_minutes());
+        if self.slot_active(s, e) {
+            Some((s, e))
+        } else {
+            None
+        }
+    }
+
+    /// Active slots as (start_minutes, end_minutes, slot_index).
+    pub fn active_slots(&self) -> Vec<(u32, u32, usize)> {
+        let mut out = Vec::with_capacity(2);
+        if let Some((s, e)) = self.slot1() {
+            out.push((s, e, 0));
+        }
+        if let Some((s, e)) = self.slot2() {
+            out.push((s, e, 1));
+        }
+        out
+    }
+
+    /// Disabled when the day is unchecked or both slots have start equals end.
+    #[allow(dead_code)]
+    pub fn is_disabled(&self) -> bool {
+        self.active_slots().is_empty()
+    }
+
+    #[allow(dead_code)]
+    pub fn crosses_midnight(&self) -> bool {
+        self.active_slots().iter().any(|(s, e, _)| s > e)
+    }
+
+    pub fn slot_start_hm(&self, slot: usize) -> (u32, u32) {
+        if slot == 1 {
+            (self.start2_hour, self.start2_minute)
+        } else {
+            (self.start_hour, self.start_minute)
+        }
+    }
+
+    pub fn slot_end_hm(&self, slot: usize) -> (u32, u32) {
+        if slot == 1 {
+            (self.end2_hour, self.end2_minute)
+        } else {
+            (self.end_hour, self.end_minute)
+        }
+    }
+}
+
+fn default_weekly_schedule() -> [DaySchedule; 7] {
+    std::array::from_fn(|_| DaySchedule::default())
+}
+
+fn weekly_from_legacy(start_hour: u32, start_minute: u32, end_hour: u32, end_minute: u32) -> [DaySchedule; 7] {
+    std::array::from_fn(|_| DaySchedule {
+        enabled: true,
+        start_hour,
+        start_minute,
+        end_hour,
+        end_minute,
+        start2_hour: 0,
+        start2_minute: 0,
+        end2_hour: 0,
+        end2_minute: 0,
+    })
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
     pub start_hour: u32,
@@ -23,6 +167,9 @@ pub struct AppConfig {
     pub password_salt: String,
     pub password_hash: String,
     pub auto_start: bool,
+    /// Per-weekday block windows, Monday = 0 .. Sunday = 6.
+    #[serde(default = "default_weekly_schedule")]
+    pub weekly_schedule: [DaySchedule; 7],
 }
 
 impl Default for AppConfig {
@@ -37,6 +184,7 @@ impl Default for AppConfig {
             password_salt: salt,
             password_hash: hash,
             auto_start: false,
+            weekly_schedule: default_weekly_schedule(),
         }
     }
 }
@@ -74,6 +222,27 @@ impl AppConfig {
         self.password_hash = hash;
     }
 
+    /// Monday = 0 .. Sunday = 6 schedule lookup.
+    #[allow(dead_code)]
+    pub fn schedule_for_index(&self, monday0: usize) -> &DaySchedule {
+        &self.weekly_schedule[monday0 % 7]
+    }
+
+    #[allow(dead_code)]
+    pub fn schedule_for_weekday(&self, weekday: chrono::Weekday) -> &DaySchedule {
+        self.schedule_for_index(weekday.num_days_from_monday() as usize)
+    }
+
+    /// Keeps legacy start/end fields consistent with Monday's schedule.
+    pub fn sync_legacy_from_weekly(&mut self) {
+        if let Some(monday) = self.weekly_schedule.first() {
+            self.start_hour = monday.start_hour;
+            self.start_minute = monday.start_minute;
+            self.end_hour = monday.end_hour;
+            self.end_minute = monday.end_minute;
+        }
+    }
+
     /// Gets the path where config.json is stored.
     pub fn config_path() -> PathBuf {
         if let Ok(exe_path) = std::env::current_exe() {
@@ -95,12 +264,14 @@ impl AppConfig {
     }
 
     /// Loads configuration from disk, creating default if not found.
+    /// Old files without `weekly_schedule` are migrated: the legacy
+    /// start/end window is applied to every weekday.
     pub fn load() -> Self {
         let path = Self::config_path();
         if let Ok(mut file) = File::open(&path) {
             let mut contents = String::new();
             if file.read_to_string(&mut contents).is_ok() {
-                if let Ok(cfg) = serde_json::from_str::<AppConfig>(&contents) {
+                if let Ok(cfg) = Self::from_json_str(&contents) {
                     return cfg;
                 }
             }
@@ -111,6 +282,43 @@ impl AppConfig {
         default_cfg
     }
 
+    fn from_json_str(contents: &str) -> Result<Self, String> {
+        let mut cfg: AppConfig =
+            serde_json::from_str(contents).map_err(|e| e.to_string())?;
+
+        // Migrate legacy configs that lack per-weekday schedules.
+        let needs_migration = match serde_json::from_str::<serde_json::Value>(contents) {
+            Ok(serde_json::Value::Object(map)) => !map.contains_key("weekly_schedule"),
+            _ => false,
+        };
+        if needs_migration {
+            cfg.weekly_schedule = weekly_from_legacy(
+                cfg.start_hour,
+                cfg.start_minute,
+                cfg.end_hour,
+                cfg.end_minute,
+            );
+        }
+
+        // Tolerate hand-edited configs with out-of-range values.
+        for day in cfg.weekly_schedule.iter_mut() {
+            day.start_hour = day.start_hour.min(23);
+            day.start_minute = day.start_minute.min(59);
+            day.end_hour = day.end_hour.min(23);
+            day.end_minute = day.end_minute.min(59);
+            day.start2_hour = day.start2_hour.min(23);
+            day.start2_minute = day.start2_minute.min(59);
+            day.end2_hour = day.end2_hour.min(23);
+            day.end2_minute = day.end2_minute.min(59);
+        }
+        cfg.start_hour = cfg.start_hour.min(23);
+        cfg.start_minute = cfg.start_minute.min(59);
+        cfg.end_hour = cfg.end_hour.min(23);
+        cfg.end_minute = cfg.end_minute.min(59);
+
+        Ok(cfg)
+    }
+
     /// Saves configuration to disk.
     pub fn save(&self) -> Result<(), String> {
         let path = Self::config_path();
@@ -118,7 +326,9 @@ impl AppConfig {
             let _ = fs::create_dir_all(parent);
         }
 
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        let mut to_save = self.clone();
+        to_save.sync_legacy_from_weekly();
+        let json = serde_json::to_string_pretty(&to_save).map_err(|e| e.to_string())?;
         let mut file = File::create(&path).map_err(|e| e.to_string())?;
         file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
         Ok(())
@@ -386,5 +596,49 @@ mod tests {
         cfg.update_password("my_new_secret!123");
         assert!(!cfg.verify_password("1q2w3e"));
         assert!(cfg.verify_password("my_new_secret!123"));
+    }
+
+    #[test]
+    fn test_default_weekly_schedule() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.weekly_schedule.len(), 7);
+        for day in cfg.weekly_schedule.iter() {
+            assert!(day.enabled);
+            assert_eq!((day.start_hour, day.start_minute), (0, 0));
+            assert_eq!((day.end_hour, day.end_minute), (7, 0));
+            assert!(day.slot2().is_none());
+        }
+    }
+
+    #[test]
+    fn test_legacy_migration_applies_to_all_weekdays() {
+        let legacy = r#"{
+            "start_hour": 23,
+            "start_minute": 30,
+            "end_hour": 6,
+            "end_minute": 30,
+            "password_salt": "s",
+            "password_hash": "h",
+            "auto_start": false
+        }"#;
+        let cfg = AppConfig::from_json_str(legacy).unwrap();
+        assert_eq!(cfg.weekly_schedule.len(), 7);
+        for day in cfg.weekly_schedule.iter() {
+            assert!(day.enabled);
+            assert_eq!((day.start_hour, day.start_minute), (23, 30));
+            assert_eq!((day.end_hour, day.end_minute), (6, 30));
+            assert!(day.slot2().is_none());
+        }
+    }
+
+    #[test]
+    fn test_weekly_schedule_preserved_when_present() {
+        let mut cfg = AppConfig::default();
+        cfg.weekly_schedule[0].enabled = false;
+        cfg.weekly_schedule[6].start_hour = 22;
+        let json = serde_json::to_string(&cfg).unwrap();
+        let parsed = AppConfig::from_json_str(&json).unwrap();
+        assert!(!parsed.weekly_schedule[0].enabled);
+        assert_eq!(parsed.weekly_schedule[6].start_hour, 22);
     }
 }
